@@ -11,7 +11,7 @@
     <include file="$(find uav_gazebo)/launch/spawn.launch"/>
     
     <!-- Call the service to take off -->
-    <node name="take_off_service" pkg="rosservice" type="rosservice" args="call --wait /drone/takeoff '{force_takeoff: true, height: 1.0, takeoff_time: 0.0, idle_time: 0.0}'" />
+    <node name="take_off_service" pkg="rosservice" type="rosservice" args="call --wait /drone/takeoff '{force_takeoff: true, height: 6.0, takeoff_time: 0.0, idle_time: 0.0}'" />
     
     <!-- 
     Call the service to switch the mode:

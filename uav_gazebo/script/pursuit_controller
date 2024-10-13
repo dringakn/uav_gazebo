@@ -1,0 +1,910 @@
+#!/usr/bin/env python3
+import rospy
+
+import json
+import math
+import numpy as np
+
+# pip install scipy
+from scipy.interpolate import CubicSpline
+from scipy.signal import butter, filtfilt
+
+# uav_gazebo control message
+from uav_gazebo_msgs.msg import (
+    PositionYawControl, 
+    VelocityYawRateControl,
+    ThrustAttitudeControl,
+    ThrustVelocityControl,
+    ThrustTorqueControl
+)
+
+from geometry_msgs.msg import (
+    TwistStamped,
+    QuaternionStamped,
+    Point,
+    Quaternion,
+    Vector3,
+    PoseStamped,
+)
+from nav_msgs.msg import Odometry, Path
+from sensor_msgs.msg import Joy
+from std_msgs.msg import Float64
+from visualization_msgs.msg import Marker, MarkerArray
+from dynamic_reconfigure.server import Server
+from uav_gazebo.cfg import PurePursuitControllerConfig  # Adjust this import
+
+# ----------------------------
+# Controller Configuration Parameters
+# ----------------------------
+
+# Default Values (can be overridden by dynamic parameters)
+DEFAULT_WAYPOINTS_FILE_PATH = "/root/catkin_ws/src/uav_gazebo/uav_gazebo/missions/path.json"
+
+DEFAULT_CONTROL_LOOP_HZ = 50.0  # Hz
+DEFAULT_TRAJECTORY_TOTAL_TIME = 100.0  # seconds
+DEFAULT_TRAJECTORY_RESOLUTION = 1000  # Number of trajectory points
+
+DEFAULT_LOOK_AHEAD_DISTANCE_MIN = 2.0  # meters
+DEFAULT_LOOK_AHEAD_DISTANCE_MAX = 8.0  # meters
+DEFAULT_LOOK_AHEAD_DISTANCE_FACTOR = 1.0  # scaling factor
+
+DEFAULT_KP_POS = 1.2
+DEFAULT_KD_POS = 0.0001
+DEFAULT_KI_POS = 0.00
+
+DEFAULT_KP_YAW = 1.0
+DEFAULT_KD_YAW = 0.0001
+DEFAULT_KI_YAW = 0.0
+
+DEFAULT_USE_FEEDFORWARD = True
+DEFAULT_ACCELERATION_FEEDFORWARD_GAIN = 0.1
+INGERAL_LIMIT = 1
+DEFAULT_MAX_LINEAR_VELOCITY = 12.0  # meters/second
+DEFAULT_MAX_ANGULAR_VELOCITY = math.pi / 2  # radians/second
+
+DEFAULT_ENABLE_PLOTTING = True
+
+# Parameters for Orientation Modes
+DEFAULT_ORIENTATION_MODE = (
+    "movement"  # Options: 'movement', 'fixed', 'poi'
+)
+DEFAULT_FIXED_YAW = 1.57  # Radians
+DEFAULT_POI_X = 50.0  # X-coordinate of Point of Interest
+DEFAULT_POI_Y = 50.0  # Y-coordinate of Point of Interest
+DEFAULT_POI_Z = 30.0  # Z-coordinate of Point of Interest
+
+# ----------------------------
+# Pure Pursuit Controller Class
+# ----------------------------
+
+
+class PurePursuitController(object):
+    def __init__(self):
+        # Initialize Parameters
+        self.waypoints_file_path = rospy.get_param(
+            "~waypoints_file_path", DEFAULT_WAYPOINTS_FILE_PATH
+        )
+        self.trajectory_total_time = rospy.get_param(
+            "~trajectory_total_time", DEFAULT_TRAJECTORY_TOTAL_TIME
+        )
+        self.trajectory_resolution = rospy.get_param(
+            "~trajectory_resolution", DEFAULT_TRAJECTORY_RESOLUTION
+        )
+        self.control_loop_hz = rospy.get_param(
+            "~control_loop_hz", DEFAULT_CONTROL_LOOP_HZ
+        )
+        self.dt = 1.0 / self.control_loop_hz
+
+        self.look_ahead_distance_min = rospy.get_param(
+            "~look_ahead_distance_min", DEFAULT_LOOK_AHEAD_DISTANCE_MIN
+        )
+        self.look_ahead_distance_max = rospy.get_param(
+            "~look_ahead_distance_max", DEFAULT_LOOK_AHEAD_DISTANCE_MAX
+        )
+        self.look_ahead_distance_factor = rospy.get_param(
+            "~look_ahead_distance_factor", DEFAULT_LOOK_AHEAD_DISTANCE_FACTOR
+        )
+
+        self.kp_pos = rospy.get_param("~kp_pos", DEFAULT_KP_POS)
+        self.kd_pos = rospy.get_param("~kd_pos", DEFAULT_KD_POS)
+        self.ki_pos = rospy.get_param("~ki_pos", DEFAULT_KI_POS)
+        self.integral_limit = INGERAL_LIMIT
+
+        self.kp_yaw = rospy.get_param("~kp_yaw", DEFAULT_KP_YAW)
+        self.kd_yaw = rospy.get_param("~kd_yaw", DEFAULT_KD_YAW)
+        self.ki_yaw = rospy.get_param("~ki_yaw", DEFAULT_KI_YAW)
+
+        self.use_feedforward = rospy.get_param(
+            "~use_feedforward", DEFAULT_USE_FEEDFORWARD
+        )
+        self.accel_feedforward_gain = rospy.get_param(
+            "~accel_feedforward_gain", DEFAULT_ACCELERATION_FEEDFORWARD_GAIN
+        )
+
+        self.max_linear_velocity = rospy.get_param(
+            "~max_linear_velocity", DEFAULT_MAX_LINEAR_VELOCITY
+        )
+        self.max_angular_velocity = rospy.get_param(
+            "~max_angular_velocity", DEFAULT_MAX_ANGULAR_VELOCITY
+        )
+
+        self.enable_plotting = rospy.get_param(
+            "~enable_plotting", DEFAULT_ENABLE_PLOTTING
+        )
+
+        self.orientation_mode = rospy.get_param(
+            "~orientation_mode", DEFAULT_ORIENTATION_MODE
+        ).lower()
+        self.fixed_yaw = rospy.get_param("~fixed_yaw", DEFAULT_FIXED_YAW)
+        self.poi_position = Point(
+            x=rospy.get_param("~poi_x", DEFAULT_POI_X),
+            y=rospy.get_param("~poi_y", DEFAULT_POI_Y),
+            z=rospy.get_param("~poi_z", DEFAULT_POI_Z),
+        )
+
+        # Validate orientation_mode
+        if self.orientation_mode not in ["movement", "fixed", "poi"]:
+            rospy.logwarn(
+                "Invalid 'orientation_mode' parameter: {}. Defaulting to 'movement'.".format(
+                    self.orientation_mode
+                )
+            )
+            self.orientation_mode = "movement"
+
+        # Initialize Look-Ahead Distance
+        self.look_ahead_distance = self.look_ahead_distance_min  # Initialize to minimum
+
+        # Initialize Trajectory Index
+        self.traj_index = 0
+
+        # Initialize State Variables
+        self.current_position = Point()
+        self.current_velocity = TwistStamped()
+        self.current_attitude = QuaternionStamped()
+
+        # Previous Errors for Derivative Calculation
+        self.prev_error_x = 0.0
+        self.prev_error_y = 0.0
+        self.prev_error_z = 0.0
+        self.prev_yaw_error = 0.0
+
+        # Integral Errors
+        self.integral_error_x = 0.0
+        self.integral_error_y = 0.0
+        self.integral_error_z = 0.0
+        self.integral_yaw_error = 0.0
+
+        # Initialize Feedforward Command History for Smoothing (optional)
+        self.prev_vel_x = 0.0
+        self.prev_vel_y = 0.0
+        self.prev_vel_z = 0.0
+        self.prev_yaw_rate = 0.0
+
+        # Subscriber to /drone/odometry
+        self.odom_sub = rospy.Subscriber(
+            "/drone/odometry", Odometry, self.odometry_callback, queue_size=10
+        )
+
+        # Conrol Publishers
+        self.control_pub = rospy.Publisher(
+            "/pure_pursuit_controller/flight_control_setpoint_ENUvelocity_yawrate",
+            Joy,
+            queue_size=10,
+        )
+        self.control_pub_position_yaw = rospy.Publisher(
+            "/drone/position_yaw/command",
+            PositionYawControl,
+            queue_size=10,
+        )
+        self.control_pub_velocity_yawrate = rospy.Publisher(
+            "/drone/velocity_yawrate/command",
+            VelocityYawRateControl,
+            queue_size=10,
+        )
+
+        # Publisher for Trajectory Visualization
+        self.path_pub = rospy.Publisher(
+            "/pure_pursuit_controller/generated_trajectory", 
+            Path, queue_size=10, latch=True
+        )
+
+        # Publishers for Visualization
+        self.waypoints_pub = rospy.Publisher(
+            "/pure_pursuit_controller/input_waypoints", 
+            MarkerArray, queue_size=10, latch=True
+        )
+
+        self.drone_position_pub = rospy.Publisher(
+            "/pure_pursuit_controller/drone_position", PoseStamped, queue_size=10
+        )
+
+        self.lookahead_pub = rospy.Publisher(
+            "/pure_pursuit_controller/lookahead_distance", Marker, queue_size=10
+        )
+
+        # Publisher for Point of Interest Visualization
+        self.poi_pub = rospy.Publisher(
+            "/pure_pursuit_controller/poi", Marker, queue_size=10
+        )
+
+        # Publishers for Performance Metrics
+        if self.enable_plotting:
+            self.error_x_pub = rospy.Publisher(
+                "/controller/error_x", Float64, queue_size=10
+            )
+            self.error_y_pub = rospy.Publisher(
+                "/controller/error_y", Float64, queue_size=10
+            )
+            self.error_z_pub = rospy.Publisher(
+                "/controller/error_z", Float64, queue_size=10
+            )
+            self.distance_pub = rospy.Publisher(
+                "/controller/distance_to_waypoint", Float64, queue_size=10
+            )
+            self.yaw_error_pub = rospy.Publisher(
+                "/controller/yaw_error", Float64, queue_size=10
+            )
+            self.control_cmd_pub = rospy.Publisher(
+                "/controller/control_commands", Vector3, queue_size=10
+            )
+            self.yaw_rate_pub = rospy.Publisher(
+                "/controller/yaw_rate", Float64, queue_size=10
+            )
+
+        # Set up dynamic reconfigure server
+        self.dyn_server = Server(
+            PurePursuitControllerConfig, self.dynamic_reconfigure_callback
+        )
+
+        # Control Loop Timer
+        self.timer = rospy.Timer(rospy.Duration(self.dt), self.control_loop)
+
+        # Initialize Filters for Sensor Data (optional)
+        self.init_filters()
+
+        # Load and Generate Initial Trajectory
+        try:
+            self.traj_time, self.trajectory = self.load_and_generate_trajectory(
+                self.waypoints_file_path
+            )
+            rospy.loginfo("Initial trajectory loaded successfully.")
+            if self.enable_plotting:
+                self.publish_trajectory()  # Publish the trajectory after loading
+        except Exception as e:
+            rospy.logerr("Failed to load initial trajectory: {}".format(e))
+
+        # Publish Point of Interest (if applicable)
+        if (self.orientation_mode == "poi") and (self.enable_plotting):
+            self.publish_poi()
+
+        rospy.loginfo("Pure Pursuit Controller initialized with dynamic parameters.")
+
+    # ----------------------------
+    # Dynamic Reconfigure Callback
+    # ----------------------------
+
+    def dynamic_reconfigure_callback(self, config, level):
+        self.orientation_mode = config["orientation_mode"].lower()
+        if self.orientation_mode not in ["movement", "fixed", "poi"]:
+            rospy.logwarn(
+                "Invalid 'orientation_mode' parameter: {}. Defaulting to 'movement'.".format(
+                    self.orientation_mode
+                )
+            )
+            self.orientation_mode = "movement"
+
+        self.fixed_yaw = config["fixed_yaw"]
+        self.poi_position.x = config["poi_x"]
+        self.poi_position.y = config["poi_y"]
+        self.poi_position.z = config["poi_z"]
+
+        self.waypoints_file_path = config["waypoints_file_path"]
+        self.trajectory_total_time = config["trajectory_total_time"]
+        self.trajectory_resolution = config["trajectory_resolution"]
+        self.control_loop_hz = config["control_loop_hz"]
+        self.dt = 1.0 / self.control_loop_hz
+
+        self.look_ahead_distance_min = config["look_ahead_distance_min"]
+        self.look_ahead_distance_max = config["look_ahead_distance_max"]
+        self.look_ahead_distance_factor = config["look_ahead_distance_factor"]
+
+        self.kp_pos = config["kp_pos"]
+        self.kd_pos = config["kd_pos"]
+        self.ki_pos = config["ki_pos"]
+
+        self.kp_yaw = config["kp_yaw"]
+        self.kd_yaw = config["kd_yaw"]
+        self.ki_yaw = config["ki_yaw"]
+
+        self.use_feedforward = config["use_feedforward"]
+        self.accel_feedforward_gain = config["accel_feedforward_gain"]
+
+        self.max_linear_velocity = config["max_linear_velocity"]
+        self.max_angular_velocity = config["max_angular_velocity"]
+
+        self.enable_plotting = config["enable_plotting"]
+
+        # Handle enabling or disabling publishers based on plotting
+        if self.enable_plotting:            
+            self.publish_trajectory()
+            if self.orientation_mode == "poi":
+                self.publish_poi()
+        else:
+            pass  # Optionally handle cleanup
+
+        # Reload trajectory if necessary
+        self.reload_trajectory()
+
+        # Update timer if control_loop_hz has changed
+        #### self.timer.shutdown()
+        self.timer = rospy.Timer(rospy.Duration(self.dt), self.control_loop)
+
+        return config
+
+    # ----------------------------
+    # Callback Functions
+    # ----------------------------
+
+    def odometry_callback(self, msg):
+        """Callback to update the current position, velocity, and attitude."""
+        # Update position
+        self.current_position = msg.pose.pose.position
+
+        # Update orientation
+        self.current_attitude.quaternion = msg.pose.pose.orientation
+
+        # Update velocity
+        self.current_velocity.twist = msg.twist.twist
+
+        # Apply low-pass filter to positions if desired
+        # (Implement filtering as needed)
+
+    # ----------------------------
+    # Control Loop
+    # ----------------------------
+
+    def control_loop(self, event):
+        """Main control loop implementing the Pure Pursuit algorithm."""
+        # Check if trajectory is loaded
+        if not hasattr(self, "trajectory"):
+            rospy.logwarn("Trajectory not loaded yet.")
+            exit(0)
+            return
+
+        # Check if trajectory is completed
+        if self.traj_index >= len(self.trajectory) - 1:
+            rospy.loginfo("Trajectory tracking completed.")
+            rospy.signal_shutdown(
+                "Trajectory completed"
+            )  # Gracefully shutdown ROS node
+            return
+
+        # Find Look-Ahead Point
+        look_ahead_point, new_traj_index = self.find_look_ahead_point()
+
+        # Update Trajectory Index
+        self.traj_index = new_traj_index
+
+        # Compute Errors
+        error_x = look_ahead_point[0] - self.current_position.x
+        error_y = look_ahead_point[1] - self.current_position.y
+        error_z = look_ahead_point[2] - self.current_position.z  # If z is relevant
+
+        distance = math.sqrt(error_x**2 + error_y**2 + error_z**2)
+
+        # Compute Desired Yaw based on Orientation Mode
+        if self.orientation_mode == "movement":
+            # Desired Yaw based on direction of movement
+            desired_yaw = math.atan2(error_y, error_x)
+
+        elif self.orientation_mode == "fixed":
+            # Desired Yaw is the fixed yaw angle
+            desired_yaw = self.fixed_yaw
+
+        elif self.orientation_mode == "poi":
+            # Desired Yaw towards the Point of Interest
+            poi_error_x = self.poi_position.x - self.current_position.x
+            poi_error_y = self.poi_position.y - self.current_position.y
+            desired_yaw = math.atan2(poi_error_y, poi_error_x)
+
+        else:
+            # Fallback to movement mode if an unknown mode is set
+            rospy.logwarn(
+                "Unknown orientation_mode '{}'. Defaulting to 'movement'.".format(
+                    self.orientation_mode
+                )
+            )
+            desired_yaw = math.atan2(error_y, error_x)
+
+        # Current Yaw
+        yaw_current = self.quaternion_to_yaw(self.current_attitude.quaternion)
+
+        # Yaw Error Normalization
+        yaw_error = self.normalize_angle(desired_yaw - yaw_current)
+
+        # Compute Derivative of Errors
+        derivative_error_x = (error_x - self.prev_error_x) / self.dt
+        derivative_error_y = (error_y - self.prev_error_y) / self.dt
+        derivative_error_z = (error_z - self.prev_error_z) / self.dt
+        derivative_yaw_error = (yaw_error - self.prev_yaw_error) / self.dt
+
+        # Update Previous Errors
+        self.prev_error_x = error_x
+        self.prev_error_y = error_y
+        self.prev_error_z = error_z
+        self.prev_yaw_error = yaw_error
+
+        # Compute Integral of Errors
+        self.integral_error_x += error_x * self.dt
+        self.integral_error_y += error_y * self.dt
+        self.integral_error_z += error_z * self.dt
+        self.integral_yaw_error += yaw_error * self.dt
+
+        # Anti-Windup for Integral Terms
+        self.integral_error_x = self.clamp(
+            self.integral_error_x, -self.integral_limit, self.integral_limit
+        )
+        self.integral_error_y = self.clamp(
+            self.integral_error_y, -self.integral_limit, self.integral_limit
+        )
+        self.integral_error_z = self.clamp(
+            self.integral_error_z, -self.integral_limit, self.integral_limit
+        )
+        self.integral_yaw_error = self.clamp(
+            self.integral_yaw_error, -self.integral_limit, self.integral_limit
+        )
+
+        # Controller for Position
+        vel_x = (
+            (self.kp_pos * error_x)
+            + (self.kd_pos * derivative_error_x)
+            + (self.ki_pos * self.integral_error_x)
+        )
+        vel_y = (
+            (self.kp_pos * error_y)
+            + (self.kd_pos * derivative_error_y)
+            + (self.ki_pos * self.integral_error_y)
+        )
+        vel_z = (
+            (self.kp_pos * error_z)
+            + (self.kd_pos * derivative_error_z)
+            + (self.ki_pos * self.integral_error_z)
+        )
+
+        # Acceleration Feedforward (if enabled)
+        if self.use_feedforward:
+            # Estimate desired acceleration based on the trajectory
+            accel_ff_x, accel_ff_y, accel_ff_z = (
+                self.calculate_feedforward_acceleration()
+            )
+            # Integrate acceleration to velocity (assuming discrete time steps)
+            vel_x += self.accel_feedforward_gain * accel_ff_x * self.dt
+            vel_y += self.accel_feedforward_gain * accel_ff_y * self.dt
+            vel_z += self.accel_feedforward_gain * accel_ff_z * self.dt
+
+        # Limit Linear Velocities
+        vel_x, vel_y, vel_z = self.limit_linear_velocity(
+            vel_x, vel_y, vel_z, self.max_linear_velocity
+        )
+
+        # Controller for Yaw
+        yaw_rate = (
+            (self.kp_yaw * yaw_error)
+            + (self.kd_yaw * derivative_yaw_error)
+            + (self.ki_yaw * self.integral_yaw_error)
+        )
+
+        # Limit Yaw Rate
+        yaw_rate = self.limit_value(yaw_rate, self.max_angular_velocity)
+
+        # Rate Limiting to Smooth Control Commands
+        vel_x = self.limit_command_rate(
+            self.prev_vel_x, vel_x, max_delta=2.0
+        )  # meters/second per control loop
+        vel_y = self.limit_command_rate(self.prev_vel_y, vel_y, max_delta=2.0)
+        vel_z = self.limit_command_rate(self.prev_vel_z, vel_z, max_delta=2.0)
+        yaw_rate = self.limit_command_rate(
+            self.prev_yaw_rate, yaw_rate, max_delta=math.pi / 2
+        )  # radians/second per control loop
+
+        # Update previous commands
+        self.prev_vel_x = vel_x
+        self.prev_vel_y = vel_y
+        self.prev_vel_z = vel_z
+        self.prev_yaw_rate = yaw_rate
+
+        # Dynamic Look-Ahead Distance based on Current Speed
+        current_speed = math.sqrt(
+            self.current_velocity.twist.linear.x**2
+            + self.current_velocity.twist.linear.y**2
+            + self.current_velocity.twist.linear.z**2
+        )
+        self.look_ahead_distance = self.calculate_dynamic_look_ahead(current_speed)
+
+        # Publish Control Commands
+        joy_msg = Joy()
+        joy_msg.axes = [vel_x, vel_y, vel_z, yaw_rate]
+        self.control_pub.publish(joy_msg)
+        
+        # Publish uav_gazebo control
+        cmd_msg = VelocityYawRateControl()
+        cmd_msg.velocity.x = vel_x
+        cmd_msg.velocity.y = vel_y
+        cmd_msg.velocity.x = vel_z
+        cmd_msg.yaw_rate = yaw_rate
+        cmd_msg.body_frame = False
+        self.control_pub_velocity_yawrate.publish(cmd_msg)
+
+        # Publish Performance Metrics
+        if self.enable_plotting:
+            # Publish Drone Position
+            self.publish_drone_position()
+            # Publish Lookahead Distance
+            self.publish_lookahead_distance(look_ahead_point)
+            # Publish Metrics
+            self.publish_metrics(
+                error_x,
+                error_y,
+                error_z,
+                distance,
+                yaw_error,
+                vel_x,
+                vel_y,
+                vel_z,
+                yaw_rate,
+            )
+
+    # ----------------------------
+    # Helper Methods
+    # ----------------------------
+
+    def find_look_ahead_point(self):
+        """Find the look-ahead point on the trajectory based on the current position and look-ahead distance."""
+        current_pos = np.array(
+            [self.current_position.x, self.current_position.y, self.current_position.z]
+        )
+        traj_points = self.trajectory[self.traj_index :]
+
+        for i, point in enumerate(traj_points):
+            distance = np.linalg.norm(point[:2] - current_pos[:2])  # 2D distance (x, y)
+            if distance >= self.look_ahead_distance:
+                return point, self.traj_index + i
+
+        # If no point found within look-ahead distance, return the last point
+        return self.trajectory[-1], len(self.trajectory) - 1
+
+    def load_and_generate_trajectory(self, waypoints_file_path):
+        """Load waypoints from a JSON file and generate a smooth trajectory using cubic splines."""
+        try:
+            rospy.loginfo("Loading waypoints from: {}".format(waypoints_file_path))
+            with open(waypoints_file_path, "r") as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            rospy.logerr("Waypoints file not found at path: {}".format(waypoints_file_path))
+            raise
+        except json.JSONDecodeError as e:
+            rospy.logerr("JSON decoding error: {}".format(e))
+            raise
+        except Exception as e:
+            rospy.logerr("Unexpected error while loading waypoints: {}".format(e))
+            raise
+
+        # Extract Positions
+        waypoints = []
+        try:
+            for pose in data["poses"]:
+                position = pose["pose"]["position"]
+                waypoints.append((position["x"], position["y"], position["z"]))
+        except KeyError as e:
+            rospy.logerr("KeyError while parsing waypoints: Missing key {}".format(e))
+            raise
+        except Exception as e:
+            rospy.logerr("Unexpected error while parsing waypoints: {}".format(e))
+            raise
+
+        rospy.loginfo("Loaded waypoints:")
+        for idx, wp in enumerate(waypoints):
+            rospy.loginfo("Waypoint {}: x={}, y={}, z={}".format(idx, wp[0], wp[1], wp[2]))
+
+        waypoints = np.array(waypoints)
+
+        # Assign Time Stamps
+        num_waypoints = len(waypoints)
+        if num_waypoints < 2:
+            rospy.logerr("At least two waypoints are required to generate a trajectory.")
+            raise ValueError("Insufficient waypoints for trajectory generation.")
+
+        time_stamps = np.linspace(0, self.trajectory_total_time, num_waypoints)
+
+        try:
+            # Generate Cubic Splines
+            cs_x = CubicSpline(time_stamps, waypoints[:, 0], bc_type="clamped")
+            cs_y = CubicSpline(time_stamps, waypoints[:, 1], bc_type="clamped")
+            cs_z = CubicSpline(time_stamps, waypoints[:, 2], bc_type="clamped")
+        except Exception as e:
+            rospy.logerr("Error during spline generation: {}".format(e))
+            raise
+
+        # Generate High-Resolution Trajectory
+        traj_time = np.linspace(0, self.trajectory_total_time, self.trajectory_resolution)
+        traj_x = cs_x(traj_time)
+        traj_y = cs_y(traj_time)
+        traj_z = cs_z(traj_time)
+        trajectory = np.vstack((traj_x, traj_y, traj_z)).T  # Shape: (N, 3)
+
+        # Validate Trajectory Shape
+        if not isinstance(trajectory, np.ndarray) or trajectory.shape[1] != 3:
+            rospy.logerr("Invalid trajectory format. Expected a Nx3 numpy array.")
+            raise ValueError("Invalid trajectory format.")
+
+        rospy.loginfo("Trajectory generated successfully using Cubic Splines.")
+
+        return traj_time, trajectory
+
+    def publish_input_waypoints(self, waypoints):
+        """Publish the input waypoints as a MarkerArray for RViz visualization."""
+        marker_array = MarkerArray()
+        for idx, point in enumerate(waypoints):
+            marker = Marker()
+            marker.header.frame_id = "world"  # Adjust to your frame
+            marker.header.stamp = rospy.Time.now()
+            marker.ns = "input_waypoints"
+            marker.id = idx
+            marker.type = Marker.SPHERE
+            marker.action = Marker.ADD
+            marker.pose.position.x = float(point[0])
+            marker.pose.position.y = float(point[1])
+            marker.pose.position.z = float(point[2])
+            marker.pose.orientation = Quaternion(w=1.0, x=0.0, y=0.0, z=0.0)
+            marker.scale = Vector3(x=1.0, y=1.0, z=1.0)  # Size of the sphere
+            marker.color.a = 0.5  # Partially opaque
+            marker.color.r = 1.0  # Red color
+            marker.color.g = 0.0
+            marker.color.b = 0.0
+            marker_array.markers.append(marker)
+
+        self.waypoints_pub.publish(marker_array)
+        rospy.loginfo("Published input waypoints for RViz visualization.")
+
+    def publish_drone_position(self):
+        """Publish the current drone position as a PoseStamped message."""
+        pose_msg = PoseStamped()
+        pose_msg.header.stamp = rospy.Time.now()
+        pose_msg.header.frame_id = "world"  # Adjust to your frame
+        pose_msg.pose.position = self.current_position
+        pose_msg.pose.orientation = (
+            self.current_attitude.quaternion
+        )  # Assuming this is available
+        self.drone_position_pub.publish(pose_msg)
+
+    def publish_lookahead_distance(self, look_ahead_point):
+        """Publish the lookahead distance as a Marker in RViz."""
+        marker = Marker()
+        marker.header.frame_id = "world"  # Adjust to your frame
+        marker.header.stamp = rospy.Time.now()
+        marker.ns = "lookahead_distance"
+        marker.id = 0
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+        marker.pose.position.x = float(look_ahead_point[0])
+        marker.pose.position.y = float(look_ahead_point[1])
+        marker.pose.position.z = float(look_ahead_point[2])
+        marker.pose.orientation = Quaternion(
+            w=1.0, x=0.0, y=0.0, z=0.0)
+        marker.scale = Vector3(
+            x=1.0, y=1.0, z=1.0
+        )  # Size of the lookahead point marker
+        marker.color.a = 1.0  # Fully opaque
+        marker.color.r = 0.0
+        marker.color.g = 0.0
+        marker.color.b = 1.0  # Blue color
+        self.lookahead_pub.publish(marker)
+
+    def publish_poi(self):
+        """Publish the Point of Interest as a Marker in RViz."""
+        marker = Marker()
+        marker.header.frame_id = "world"  # Adjust to your frame
+        marker.header.stamp = rospy.Time.now()
+        marker.ns = "point_of_interest"
+        marker.id = 0
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+        marker.pose.position = self.poi_position
+        marker.pose.orientation = Quaternion(w=1.0, x=0.0, y=0.0, z=0.0)
+        marker.scale = Vector3(x=5.0, y=5.0, z=5.0)  # Size of the sphere
+        marker.color.a = 1.0  # Fully opaque
+        marker.color.r = 1.0  # Red color
+        marker.color.g = 1.0  # Green color
+        marker.color.b = 0.0
+        self.poi_pub.publish(marker)
+        rospy.loginfo("Published Point of Interest for RViz visualization.")
+
+    def quaternion_to_yaw(self, q):
+        """Convert quaternion orientation to yaw angle."""
+        siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+        cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+        yaw = math.atan2(siny_cosp, cosy_cosp)
+        return yaw
+
+    def normalize_angle(self, angle):
+        """Normalize an angle to the range [-pi, pi]."""
+        return (angle + math.pi) % (2 * math.pi) - math.pi
+
+    def clamp(self, value, min_value, max_value):
+        """Clamp a value between a minimum and maximum."""
+        return max(min_value, min(max_value, value))
+
+    def limit_value(self, value, max_value):
+        """Limit a scalar value to the range [-max_value, max_value]."""
+        return self.clamp(value, -max_value, max_value)
+
+    def limit_linear_velocity(self, vel_x, vel_y, vel_z, max_linear_velocity):
+        """Limit the linear velocities to ensure the drone does not exceed maximum speed."""
+        magnitude = math.sqrt(vel_x**2 + vel_y**2 + vel_z**2)
+        if magnitude > max_linear_velocity:
+            scale = max_linear_velocity / magnitude if magnitude != 0 else 1.0
+            vel_x *= scale
+            vel_y *= scale
+            vel_z *= scale
+        return vel_x, vel_y, vel_z
+
+    def calculate_dynamic_look_ahead(self, current_speed):
+        """Calculate dynamic look-ahead distance based on current speed."""
+        look_ahead = (
+            self.look_ahead_distance_min
+            + self.look_ahead_distance_factor * current_speed
+        )
+        look_ahead = self.clamp(
+            look_ahead, self.look_ahead_distance_min, self.look_ahead_distance_max
+        )
+        return look_ahead
+
+    def calculate_feedforward_acceleration(self):
+        """Calculate acceleration feedforward based on the trajectory."""
+        if self.traj_index + 2 >= len(self.trajectory):
+            accel_x, accel_y, accel_z = 0.0, 0.0, 0.0
+        else:
+            point_current_idx = self.traj_index
+            point_next_idx = self.traj_index + 1
+            point_after_next_idx = self.traj_index + 2
+
+            # Acceleration estimation using finite differences
+            accel_x = (
+                self.trajectory[point_after_next_idx][0]
+                - 2 * self.trajectory[point_next_idx][0]
+                + self.trajectory[point_current_idx][0]
+            ) / (self.dt**2)
+            accel_y = (
+                self.trajectory[point_after_next_idx][1]
+                - 2 * self.trajectory[point_next_idx][1]
+                + self.trajectory[point_current_idx][1]
+            ) / (self.dt**2)
+            accel_z = (
+                self.trajectory[point_after_next_idx][2]
+                - 2 * self.trajectory[point_next_idx][2]
+                + self.trajectory[point_current_idx][2]
+            ) / (self.dt**2)
+
+        return accel_x, accel_y, accel_z
+
+    def publish_metrics(
+        self,
+        error_x,
+        error_y,
+        error_z,
+        distance,
+        yaw_error,
+        vel_x,
+        vel_y,
+        vel_z,
+        yaw_rate,
+    ):
+        """Publish performance metrics for visualization."""
+        # Publish Position Errors
+        error_x_msg = Float64()
+        error_x_msg.data = error_x
+        self.error_x_pub.publish(error_x_msg)
+
+        error_y_msg = Float64()
+        error_y_msg.data = error_y
+        self.error_y_pub.publish(error_y_msg)
+
+        error_z_msg = Float64()
+        error_z_msg.data = error_z
+        self.error_z_pub.publish(error_z_msg)
+
+        # Publish Distance to Look-Ahead Point
+        distance_msg = Float64()
+        distance_msg.data = distance
+        self.distance_pub.publish(distance_msg)
+
+        # Publish Yaw Error
+        yaw_error_msg = Float64()
+        yaw_error_msg.data = yaw_error
+        self.yaw_error_pub.publish(yaw_error_msg)
+
+        # Publish Control Commands
+        control_cmd_msg = Vector3()
+        control_cmd_msg.x = vel_x
+        control_cmd_msg.y = vel_y
+        control_cmd_msg.z = vel_z
+        self.control_cmd_pub.publish(control_cmd_msg)
+
+        # Publish Yaw Rate
+        yaw_rate_msg = Float64()
+        yaw_rate_msg.data = yaw_rate
+        self.yaw_rate_pub.publish(yaw_rate_msg)
+
+    def limit_command_rate(self, prev_cmd, new_cmd, max_delta):
+        """Limit the rate of change of control commands to prevent sudden jumps."""
+        delta = new_cmd - prev_cmd
+        delta = self.clamp(delta, -max_delta, max_delta)
+        return prev_cmd + delta
+
+    def init_filters(self):
+        """Initialize low-pass filters for sensor data (optional)."""
+        self.filter_order = 2
+        self.cutoff_freq = 5.0  # Hz
+        nyq = 0.5 * self.control_loop_hz
+        normal_cutoff = self.cutoff_freq / nyq
+        self.b, self.a = butter(
+            self.filter_order, normal_cutoff, btype="low", analog=False
+        )
+        self.filtered_x = []
+        self.filtered_y = []
+        self.filtered_z = []
+        self.padlen = 3 * max(len(self.a), len(self.b))
+
+    def reload_trajectory(self):
+        """Reload and regenerate the trajectory based on updated parameters."""
+        rospy.loginfo("Reloading trajectory based on updated parameters.")
+        try:
+            self.traj_time, self.trajectory = self.load_and_generate_trajectory(
+                self.waypoints_file_path
+            )
+            self.traj_index = 0  # Reset trajectory index
+            rospy.loginfo("Trajectory reloaded successfully.")
+            if self.enable_plotting:
+                self.publish_trajectory()  # Publish the updated trajectory
+        except Exception as e:
+            rospy.logerr("Failed to reload trajectory: {}".format(e))
+
+    def publish_trajectory(self):
+        """Publish the generated trajectory as a Path message for RViz visualization."""
+
+        if not hasattr(self, 'trajectory'):
+            rospy.loginfo(f"trajectory is not available!!!")
+            return
+
+        path_msg = Path()
+        path_msg.header.stamp = rospy.Time.now()
+        path_msg.header.frame_id = "world"  # Change to your appropriate frame
+
+        for point in self.trajectory:
+            pose = PoseStamped()
+            pose.header = path_msg.header
+            pose.pose.position.x = float(point[0])
+            pose.pose.position.y = float(point[1])
+            pose.pose.position.z = float(point[2])
+            pose.pose.orientation = Quaternion(w=1.0, x=0.0, y=0.0, z=0.0)
+            path_msg.poses.append(pose)
+
+        self.path_pub.publish(path_msg)
+        rospy.loginfo(
+            "Published trajectory to /pure_pursuit_controller/generated_trajectory for RViz visualization."
+        )
+
+
+# ----------------------------
+# Main Function
+# ----------------------------
+
+
+def main():
+    rospy.init_node("pure_pursuit_controller", anonymous=False)
+    controller = PurePursuitController()
+    rospy.spin()
+
+
+if __name__ == "__main__":
+    main()

@@ -11,6 +11,11 @@ find_package(catkin REQUIRED COMPONENTS
   angles
   tf2_ros
   uav_gazebo_msgs
+  dynamic_reconfigure
+)
+
+generate_dynamic_reconfigure_options(
+  cfg/PurePursuitController.cfg
 )
 
 find_package(gazebo REQUIRED)
