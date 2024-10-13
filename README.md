@@ -6,14 +6,23 @@ Plugin for simple simulation of a quad-copter in Gazebo and ROS.
 
 ## An example for the impatients
 
-Start Gazebo (with ROS connection):
+Start Gazebo/RViz/MissionManager (with ROS connection):
 ```
 roslaunch uav_gazebo bringup.launch
 ```
-In a second termaina 
+Open a second termainal and execute a simple test controller
 ```
 rosrun uav_gazebo example_control
 ```
+For testing the pure pursuit controller, make sure the drone is in mode 2 (velocity_yawrate control mode) by executing the following service:
+```
+rosservice call /drone/switch_mode "{mode: {mode: 2}}"
+```
+Afterwards execute following in a terminal
+```
+rosrun uav_gazebo pursuit_controller
+```
+
 ## Packages
 
 - `uav_gazebo`: catkin package containing the actual Gazebo plugin plus some example code.
