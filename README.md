@@ -6,17 +6,8 @@ Plugin for simple simulation of a quad-copter in Gazebo and ROS.
 
 Start Gazebo (with ROS connection):
 ```
-roslaunch gazebo_ros empty_world.launch
+roslaunch uav_gazebo bringup.launch
 ```
-
-Spawn a drone in Gazebo, enable position/yaw control and move it around
-(remember to make `example_control` executable with `chmod +x example_control`):
-```
-roslaunch uav_gazebo spawn.launch
-rostopic pub -1 /drone/switch_mode uav_gazebo_msgs/ControlMode "mode: 1"
-rosrun uav_gazebo example_control
-```
-
 ## Packages
 
 - `uav_gazebo`: catkin package containing the actual Gazebo plugin plus some example code.
