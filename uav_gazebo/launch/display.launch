@@ -1,6 +1,8 @@
 <launch>
   <!-- Load a URDF on the ROS parameter server -->
-  <param name="robot_description" command="$(find xacro)/xacro '$(find uav_gazebo)/urdf/drone.xacro'" />
+  <!-- Loaded inside spawn.launch -->
+  <!-- <param name="robot_description" command="$(find xacro)/xacro '$(find uav_gazebo)/urdf/drone.xacro'" /> -->
+  
   <!-- Visualize the state in RViz -->
-  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find uav_gazebo)/launch/drone.rviz" required="true" />
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find uav_gazebo)/rviz/rviz.rviz" required="true" />
 </launch>
