@@ -10,6 +10,10 @@ Start Gazebo (with ROS connection):
 ```
 roslaunch uav_gazebo bringup.launch
 ```
+In a second termaina 
+```
+rosrun uav_gazebo example_control
+```
 ## Packages
 
 - `uav_gazebo`: catkin package containing the actual Gazebo plugin plus some example code.
