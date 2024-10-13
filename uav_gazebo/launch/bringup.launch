@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<launch>
+
+    <!-- Launch Gazebo -->
+    <include file="$(find gazebo_ros)/launch/empty_world.launch"/>
+    
+    <!-- Launch RViz -->
+    <include file="$(find uav_gazebo)/launch/display.launch"/>
+    
+    <!-- Spawn simple_drone_manager and load URDF -->
+    <include file="$(find uav_gazebo)/launch/spawn.launch"/>
+    
+    <!-- Call the service to take off -->
+    <node name="take_off_service" pkg="rosservice" type="rosservice" args="call --wait /drone/takeoff '{force_takeoff: true, height: 1.0, takeoff_time: 0.0, idle_time: 0.0}'" />
+    
+    <!-- 
+    Call the service to switch the mode:
+    INACTIVE = 0
+    POSITION_YAW = 1
+    VELOCITY_YAWRATE = 2
+    THRUST_ATTITUDE = 3
+    THRUST_VELOCITY = 4
+    THRUST_TORQUE = 5    
+     -->
+    <node name="switch_mode_service" pkg="rosservice" type="rosservice" args="call --wait /drone/switch_mode '{mode: {mode: 2}}'" />
+
+</launch>
