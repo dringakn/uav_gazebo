@@ -1,4 +1,40 @@
 <launch>
+
+  <!-- 
+  Simulated Time (use_sim_time = true):
+  When you set use_sim_time = true, the ROS system starts 
+  using simulation time rather than system time. 
+  Simulation time is controlled by Gazebo and is synchronized 
+  with the physics engine.
+  
+  If Gazebo’s physics engine or clock isn’t running smoothly 
+  or if time synchronization between nodes becomes skewed, 
+  you may encounter repeated or redundant timestamps, 
+  where the same timestamp is published multiple times for 
+  different data.
+
+  In this case, the TF_REPEATED_DATA warning occurs because 
+  the transform being published (for the drone frame) has 
+  the same timestamp as the previous message, and ROS is 
+  flagging this as redundant. This can happen due to slight 
+  variations in how fast Gazebo publishes data or updates 
+  the simulation clock.
+
+  Real System Time (use_sim_time = false):
+  When you set use_sim_time = false, ROS uses the system 
+  clock (your computer’s real-time clock). In this mode, 
+  the time is continuously progressing, and redundant 
+  timestamps are far less likely to occur unless there’s 
+  an issue with your code or nodes publishing the same 
+  timestamp by mistake.
+
+  Since real-time is used, the warning disappears because 
+  there’s less risk of time synchronization issues, 
+  and the time between messages is not influenced by 
+  simulation pauses, resets, or slowdowns.
+   -->
+  <param name="use_sim_time" value="false" />
+
   <!-- Name of the drone -->
   <arg name="name" default="drone"/>
 
