@@ -6,23 +6,38 @@ import math
 
 
 if __name__ == '__main__':
-    rospy.init_node("drone_control", anonymous=True)
-    cmd = PositionYawControl()
-    pub = rospy.Publisher("drone/position_yaw/command", PositionYawControl, queue_size=1)
+    
+    rospy.init_node("drone_control", 
+                    anonymous=True)
+    
+    # Drone command publisher
+    pub = rospy.Publisher("drone/position_yaw/command", 
+                          PositionYawControl, 
+                          queue_size=1)
 
-    dt = 0.01
-    t = 0.
-    rate = rospy.Rate(1./dt)
-    w = 0.1
+    t = 0.0  # Initial Time
+    dt = 0.01  # Loop Time
+    w = 1.0 # Angular Velocity
+
+    rate = rospy.Rate(1.0 / dt)
+    cmd = PositionYawControl()  # Command message
 
     while not rospy.is_shutdown():
+        # Generate drone control command
+        # Position, x, y, z
         cmd.position.x = math.cos(w*t)
         cmd.position.y = math.sin(w*t)
         cmd.position.z = 1
+        # Velocity: vx, vy
         cmd.velocity.x = -w*math.sin(w*t)
         cmd.velocity.y = w*math.cos(w*t)
+        # Yaw/YawRate
         cmd.yaw = w*t
         cmd.yaw_rate = w
+        # Send drone command
         pub.publish(cmd)
+
+        # Update for next iteration
         t += dt
+        # Wait for the next iteration
         rate.sleep()
