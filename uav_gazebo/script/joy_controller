@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+import rospy
+from sensor_msgs.msg import Joy
+from geometry_msgs.msg import Vector3
+from uav_gazebo_msgs.msg import (
+    PositionYawControl,
+    ThrustAttitudeControl,
+    ThrustTorqueControl,
+    ThrustVelocityControl,
+    VelocityYawRateControl,
+    ControlMode  # Constants: INACTIVE=0, POSITION_YAW=1, etc.
+)
+from uav_gazebo_msgs.srv import SwitchMode
+
+# Define joystick button enum
+class JOYButtons:
+    CROSS = 0       # POSITION_YAW
+    CIRCLE = 1      # VELOCITY_YAWRATE
+    SQUARE = 2      # THRUST_ATTITUDE
+    TRIANGLE = 3    # THRUST_VELOCITY
+    L1 = 4          # THRUST_TORQUE
+    R1 = 5          # INACTIVE
+
+# Define joystick axis enum (assumed ordering)
+class JOYAxes:
+    LEFT_STICK_X = 0
+    LEFT_STICK_Y = 1
+    RIGHT_STICK_X = 3
+    RIGHT_STICK_Y = 4
+    R2 = 5
+    L2 = 2
+
+# Mapping from Joy buttons to control modes
+BUTTON_MODE_MAPPING = {
+    JOYButtons.CROSS: ControlMode.POSITION_YAW,
+    JOYButtons.CIRCLE: ControlMode.VELOCITY_YAWRATE,
+    JOYButtons.SQUARE: ControlMode.THRUST_ATTITUDE,
+    JOYButtons.TRIANGLE: ControlMode.THRUST_VELOCITY,
+    JOYButtons.L1: ControlMode.THRUST_TORQUE,
+    JOYButtons.R1: ControlMode.INACTIVE
+}
+
+# Mapping from control mode numbers to their human-readable names
+MODE_NAME = {
+    ControlMode.INACTIVE: "INACTIVE",
+    ControlMode.POSITION_YAW: "POSITION_YAW",
+    ControlMode.VELOCITY_YAWRATE: "VELOCITY_YAWRATE",
+    ControlMode.THRUST_ATTITUDE: "THRUST_ATTITUDE",
+    ControlMode.THRUST_VELOCITY: "THRUST_VELOCITY",
+    ControlMode.THRUST_TORQUE: "THRUST_TORQUE"
+}
+
+# Scaling factors for easy tuning
+POSITION_SCALE = 1.0
+VELOCITY_SCALE = 1.0
+ACCELERATION_SCALE = 1.0
+YAW_SCALE = 1.0
+THRUST_SCALE = 1.0
+ATTITUDE_SCALE = 1.0
+
+class JoyDroneController:
+    def __init__(self):
+        rospy.init_node('joy_drone_controller')
+
+        # Set default mode
+        self.current_mode = ControlMode.VELOCITY_YAWRATE
+
+        # Publishers for control commands
+        self.pub_position_yaw = rospy.Publisher('/drone/position_yaw/command', PositionYawControl, queue_size=10)
+        self.pub_thrust_attitude = rospy.Publisher('/drone/thrust_attitude/command', ThrustAttitudeControl, queue_size=10)
+        self.pub_thrust_torque = rospy.Publisher('/drone/thrust_torque/command', ThrustTorqueControl, queue_size=10)
+        self.pub_thrust_velocity = rospy.Publisher('/drone/thrust_velocity/command', ThrustVelocityControl, queue_size=10)
+        self.pub_velocity_yawrate = rospy.Publisher('/drone/velocity_yawrate/command', VelocityYawRateControl, queue_size=10)
+
+        # Wait for the switch_mode service and create a proxy
+        rospy.wait_for_service('/drone/switch_mode')
+        self.switch_mode_client = rospy.ServiceProxy('/drone/switch_mode', SwitchMode)
+
+        rospy.Subscriber('/joy', Joy, self.joy_callback)
+        self.last_button_states = []
+        rospy.loginfo("JoyDroneController started in %s mode.", MODE_NAME[self.current_mode])
+
+    def joy_callback(self, msg):
+        # Initialize last_button_states if empty
+        if not self.last_button_states:
+            self.last_button_states = list(msg.buttons)
+
+        new_mode = None
+        # Check for a rising edge on any mapped button to trigger a mode switch
+        for btn_idx, mode in BUTTON_MODE_MAPPING.items():
+            if btn_idx < len(msg.buttons) and msg.buttons[btn_idx] == 1 and self.last_button_states[btn_idx] == 0:
+                new_mode = mode
+                break
+
+        # If a mode change is detected, call the switch_mode service with a proper request message
+        if new_mode is not None and new_mode != self.current_mode:
+            self.current_mode = new_mode
+            try:
+                req = ControlMode()  # Create a request message
+                req.mode = new_mode
+                response = self.switch_mode_client(req)
+                if response.success:
+                    rospy.loginfo("Switched drone mode to: %s", MODE_NAME[new_mode])
+                else:
+                    rospy.logerr("Failed to switch drone mode to: %s", MODE_NAME[new_mode])
+            except rospy.ServiceException as e:
+                rospy.logerr("Switch mode service call failed: %s", e)
+
+        # Update button state history to avoid repeated triggers
+        self.last_button_states = list(msg.buttons)
+
+        # Publish control command based on current mode using scaled joystick axes
+        if self.current_mode == ControlMode.POSITION_YAW:
+            cmd = PositionYawControl()
+            if len(msg.axes) >= 8:
+                cmd.position = Vector3(
+                    msg.axes[JOYAxes.LEFT_STICK_X] * POSITION_SCALE,
+                    msg.axes[JOYAxes.LEFT_STICK_Y] * POSITION_SCALE,
+                    msg.axes[JOYAxes.RIGHT_STICK_X] * POSITION_SCALE
+                )
+                cmd.velocity = Vector3(
+                    msg.axes[JOYAxes.RIGHT_STICK_Y] * VELOCITY_SCALE,
+                    msg.axes[JOYAxes.L2] * VELOCITY_SCALE,
+                    msg.axes[JOYAxes.R2] * VELOCITY_SCALE
+                )
+                cmd.acceleration = Vector3(
+                    msg.axes[6] * ACCELERATION_SCALE,
+                    msg.axes[7] * ACCELERATION_SCALE,
+                    0.0
+                )
+            cmd.yaw = 0.0 * YAW_SCALE
+            cmd.yaw_rate = 0.0 * YAW_SCALE
+            self.pub_position_yaw.publish(cmd)
+
+        elif self.current_mode == ControlMode.VELOCITY_YAWRATE:
+            cmd = VelocityYawRateControl()
+            if len(msg.axes) >= 8:
+                cmd.velocity = Vector3(
+                    msg.axes[JOYAxes.LEFT_STICK_Y] * VELOCITY_SCALE,
+                    msg.axes[JOYAxes.LEFT_STICK_X] * VELOCITY_SCALE,
+                    msg.axes[JOYAxes.RIGHT_STICK_Y] * VELOCITY_SCALE
+                )
+                cmd.acceleration = Vector3(
+                    msg.axes[JOYAxes.L2] * ACCELERATION_SCALE,
+                    msg.axes[JOYAxes.R2] * ACCELERATION_SCALE,
+                    0.0
+                )
+            cmd.yaw_rate = msg.axes[JOYAxes.RIGHT_STICK_X] * YAW_SCALE
+            cmd.body_frame = True
+            self.pub_velocity_yawrate.publish(cmd)
+
+        elif self.current_mode == ControlMode.THRUST_ATTITUDE:
+            cmd = ThrustAttitudeControl()
+            if len(msg.axes) >= 7:
+                cmd.thrust = msg.axes[JOYAxes.LEFT_STICK_X] * THRUST_SCALE
+                cmd.attitude = Vector3(
+                    msg.axes[JOYAxes.LEFT_STICK_Y] * ATTITUDE_SCALE,
+                    msg.axes[JOYAxes.RIGHT_STICK_X] * ATTITUDE_SCALE,
+                    msg.axes[JOYAxes.RIGHT_STICK_Y] * ATTITUDE_SCALE
+                )
+                cmd.attitude_rates = Vector3(
+                    msg.axes[JOYAxes.L2] * ATTITUDE_SCALE,
+                    msg.axes[JOYAxes.R2] * ATTITUDE_SCALE,
+                    0.0
+                )
+            self.pub_thrust_attitude.publish(cmd)
+
+        elif self.current_mode == ControlMode.THRUST_VELOCITY:
+            cmd = ThrustVelocityControl()
+            if len(msg.axes) >= 7:
+                cmd.thrust = msg.axes[JOYAxes.LEFT_STICK_X] * THRUST_SCALE
+                cmd.velocity = Vector3(
+                    msg.axes[JOYAxes.LEFT_STICK_Y] * VELOCITY_SCALE,
+                    msg.axes[JOYAxes.RIGHT_STICK_X] * VELOCITY_SCALE,
+                    msg.axes[JOYAxes.RIGHT_STICK_Y] * VELOCITY_SCALE
+                )
+                cmd.acceleration = Vector3(
+                    msg.axes[JOYAxes.L2] * ACCELERATION_SCALE,
+                    msg.axes[JOYAxes.R2] * ACCELERATION_SCALE,
+                    0.0
+                )
+            self.pub_thrust_velocity.publish(cmd)
+
+        elif self.current_mode == ControlMode.THRUST_TORQUE:
+            cmd = ThrustTorqueControl()
+            if len(msg.axes) >= 4:
+                cmd.thrust = msg.axes[JOYAxes.LEFT_STICK_X] * THRUST_SCALE
+                cmd.torque = Vector3(
+                    msg.axes[JOYAxes.LEFT_STICK_Y] * ATTITUDE_SCALE,
+                    msg.axes[JOYAxes.RIGHT_STICK_X] * ATTITUDE_SCALE,
+                    msg.axes[JOYAxes.RIGHT_STICK_Y] * ATTITUDE_SCALE
+                )
+            self.pub_thrust_torque.publish(cmd)
+        # In INACTIVE mode, no control command is published.
+
+    def spin(self):
+        rospy.spin()
+
+if __name__ == '__main__':
+    try:
+        controller = JoyDroneController()
+        controller.spin()
+    except rospy.ROSInterruptException:
+        pass

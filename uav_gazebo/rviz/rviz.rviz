@@ -144,7 +144,7 @@ Visualization Manager:
       Marker Topic: /pure_pursuit_controller/lookahead_distance
       Name: LookAheadDistance
       Namespaces:
-        lookahead_distance: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/MarkerArray
@@ -183,7 +183,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 42.638858795166016
+      Distance: 13.494277000427246
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
