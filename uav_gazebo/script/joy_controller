@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import rospy
 from sensor_msgs.msg import Joy
 from geometry_msgs.msg import Vector3
@@ -8,7 +9,7 @@ from uav_gazebo_msgs.msg import (
     ThrustTorqueControl,
     ThrustVelocityControl,
     VelocityYawRateControl,
-    ControlMode  # Constants: INACTIVE=0, POSITION_YAW=1, etc.
+    ControlMode
 )
 from uav_gazebo_msgs.srv import SwitchMode
 
@@ -19,9 +20,9 @@ class JOYButtons:
     SQUARE = 2      # THRUST_ATTITUDE
     TRIANGLE = 3    # THRUST_VELOCITY
     L1 = 4          # THRUST_TORQUE
-    R1 = 5          # INACTIVE
+    R1 = 5          # INACTIVE, STOP, SWITCHOFF, DROP
 
-# Define joystick axis enum (assumed ordering)
+# Define joystick axis enum
 class JOYAxes:
     LEFT_STICK_X = 0
     LEFT_STICK_Y = 1
@@ -32,12 +33,12 @@ class JOYAxes:
 
 # Mapping from Joy buttons to control modes
 BUTTON_MODE_MAPPING = {
-    JOYButtons.CROSS: ControlMode.POSITION_YAW,
-    JOYButtons.CIRCLE: ControlMode.VELOCITY_YAWRATE,
-    JOYButtons.SQUARE: ControlMode.THRUST_ATTITUDE,
-    JOYButtons.TRIANGLE: ControlMode.THRUST_VELOCITY,
-    JOYButtons.L1: ControlMode.THRUST_TORQUE,
-    JOYButtons.R1: ControlMode.INACTIVE
+    JOYButtons.R1: ControlMode.INACTIVE,              # 0
+    JOYButtons.CROSS: ControlMode.POSITION_YAW,       # 1
+    JOYButtons.CIRCLE: ControlMode.VELOCITY_YAWRATE,  # 2
+    JOYButtons.SQUARE: ControlMode.THRUST_ATTITUDE,   # 3
+    JOYButtons.TRIANGLE: ControlMode.THRUST_VELOCITY, # 4
+    JOYButtons.L1: ControlMode.THRUST_TORQUE,         # 5
 }
 
 # Mapping from control mode numbers to their human-readable names

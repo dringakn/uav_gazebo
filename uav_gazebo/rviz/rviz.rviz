@@ -6,6 +6,7 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /Axes1
       Splitter Ratio: 0.5
     Tree Height: 1126
   - Class: rviz/Selection
@@ -155,6 +156,15 @@ Visualization Manager:
         {}
       Queue Size: 100
       Value: true
+    - Alpha: 1
+      Class: rviz/Axes
+      Enabled: true
+      Length: 10
+      Name: Axes
+      Radius: 0.10000000149011612
+      Reference Frame: <Fixed Frame>
+      Show Trail: false
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -183,7 +193,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 13.494277000427246
+      Distance: 29.4019718170166
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -199,9 +209,9 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.5453984141349792
+      Pitch: 0.46539849042892456
       Target Frame: drone
-      Yaw: 6.118581295013428
+      Yaw: 0.7503991723060608
     Saved: ~
 Window Geometry:
   Displays:
