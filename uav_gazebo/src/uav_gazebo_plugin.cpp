@@ -39,7 +39,7 @@ void UavGazeboPlugin::Load(physics::ModelPtr model, sdf::ElementPtr sdf) {
   M = inertial->Mass();
   Ib = inertial->MOI();
 
-  ROS_DEBUG_STREAM_NAMED(_LOG_NAME_, "Mass: " << M << std::endl << "Inertia:" << std::endl << Ib);
+  ROS_INFO_STREAM_NAMED(_LOG_NAME_, std::endl << "Mass: " << M << std::endl << "Inertia:" << std::endl << Ib);
 
   // +++ ROS CONNECTION +++
   if(sdf->HasElement("rosNamespace")) {
@@ -363,7 +363,7 @@ void UavGazeboPlugin::setGains(uav_gazebo_msgs::ControlGainsConfig &cfg, uint32_
   yaw_rate_k = cfg.Ky;
   angvel_k = cfg.Kw;
 
-  ROS_DEBUG_STREAM_NAMED(_LOG_NAME_, "Received dynamic reconfigure request."
+  ROS_INFO_STREAM_NAMED(_LOG_NAME_, "Received dynamic reconfigure request."
     << std::endl << "Position controller: kp=" << pos_kp << "  kd=" << pos_kd
     << std::endl << "Linear velocity controller: k=" << linvel_k
     << std::endl << "Attitude controller: kp=" << att_kp << "  kd=" << att_kd

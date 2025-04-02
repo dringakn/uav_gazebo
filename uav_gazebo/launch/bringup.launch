@@ -1,5 +1,7 @@
 <?xml version="1.0"?>
 <launch>
+	<!-- rosconsole configuration file -->
+	<!-- <env name="ROSCONSOLE_CONFIG_FILE" value="$(find uav_gazebo)/config/rosconsole.config" /> -->
 	<!-- Launch Gazebo -->
 	<include file="$(find gazebo_ros)/launch/empty_world.launch" />
 	<!-- Launch RViz -->
