@@ -7,24 +7,39 @@ Plugin for simple simulation of a quad-copter in Gazebo and ROS.
 ## An example for the impatients
 
 Start Gazebo/RViz/MissionManager (with ROS connection):
+If a PS4 Joystick is attached to the system the drone can
+be controlled using the joystick controller
 
 ```
 roslaunch uav_gazebo bringup.launch
 ```
 
-Open a second termainal and execute a simple test controller
+    PS4 controller interface:
+    - Left Stick: X, Y
+    - Right Stick: Z, Yaw
+    - R2/R2: takeoff/land
+    - L1: THRUST_TORQUE Mode
+    - R1: INACTIVE, STOP, SWITCHOFF, DROP
+    - CROSS: POSITION_YAW Mode
+    - CIRCLE: VELOCITY_YAWRATE Mode
+    - SQUARE: THRUST_ATTITUDE Mode
+    - TRIANGLE: THRUST_VELOCITY Mode
+
+If the drone is in VELOCITY_YAWRATE (CIRCLE) it will be controlled by the movement of control sticks. If the drone is in POSITION_YAW (CROSS) mode then the control sticks movenment can be seen as a target position. If the R1 is pressed then the drone will drope (similar to a kill switch), it can be lifted off by pressing VELOCITY_YAWRATE (CIRCLE) and with Right-Stick Up movement.
+
+If no joystick is present then open a second termainal and execute a simple test controller
 
 ```
 rosrun uav_gazebo example_control
 ```
 
-For testing the pure pursuit controller, make sure the drone is in mode 2 (velocity_yawrate control mode) by executing the following service:
+Similarly if no joystick is present, the drone mode can be change by a service call. For example for the testing of a pure pursuit controller, make sure the drone is in mode 2 (velocity_yawrate control mode) by executing the following service:
 
 ```
 rosservice call /drone/switch_mode "{mode: {mode: 2}}"
 ```
 
-Afterwards execute following in a terminal
+Afterwards execute following command in a terminal to start sending pursuit controller commands:
 
 ```
 rosrun uav_gazebo pursuit_controller
