@@ -28,6 +28,7 @@ roslaunch uav_gazebo bringup.launch
 
 If the drone is in VELOCITY_YAWRATE (CIRCLE) it will be controlled by the movement of control sticks. If the drone is in POSITION_YAW (CROSS) mode then the control sticks movenment can be seen as a target position. If the R1 is pressed then the drone will drope (similar to a kill switch), it can be lifted off by pressing VELOCITY_YAWRATE (CIRCLE) and with Right-Stick Up movement. The drone position can be reset (teleported) to
 fixed position using LEFT or RIGHT Stick button press.
+Press SHARE button to reset drone position as well as pursuit controller (start if already not running).
 
 If no joystick is present then open a second termainal and execute a simple test controller
 

@@ -27,6 +27,7 @@
 	- SQUARE: THRUST_ATTITUDE Mode
 	- TRIANGLE: THRUST_VELOCITY Mode
 	- LEFT/RIGHT STICK BUTTON: RESET DRONE POSITION
+	- SHARE: RESET DRONE POSITION + RESET PURSUIT CONTROL
 	-->
 	<node name="joy_cont" pkg="uav_gazebo" type="joy_controller" output="screen" />
 	<!--

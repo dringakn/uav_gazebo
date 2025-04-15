@@ -2,6 +2,7 @@
 
 import rospy
 import math
+import subprocess
 from sensor_msgs.msg import Joy
 from geometry_msgs.msg import Vector3
 from uav_gazebo_msgs.msg import (
@@ -24,9 +25,12 @@ class JOYButtons:
     TRIANGLE = 3    # THRUST_VELOCITY
     L1 = 4          # THRUST_TORQUE
     R1 = 5          # INACTIVE, STOP, SWITCHOFF, DROP
+    SHARE = 8       # 
+    OPTIONS = 9     #
+    PS = 10         #
     LEFT = 11       # RESET DRONE POSITION
     RIGHT = 12      # RESET DRONE POSITION
-
+    
 # Define joystick axis enum
 class JOYAxes:
     LEFT_STICK_X = 0
@@ -70,6 +74,8 @@ class JoyDroneController:
 
         # Set default mode
         self.current_mode = ControlMode.VELOCITY_YAWRATE
+        # Initialize node process (pursuit controller)
+        self.pursuit_controller_process = None
 
         # Publishers for control commands
         self.pub_position_yaw = rospy.Publisher('/drone/position_yaw/command', PositionYawControl, queue_size=10)
@@ -153,8 +159,29 @@ class JoyDroneController:
                 rospy.loginfo("RIGHT button pressed: Setting drone position at (0,0,1).")
                 self.publish_model_state('drone', (0.0, 0.0, 1.0), (0.0, 0.0, 0.0, 1.0))
 
+        # Detect button rising edge for SHARE button
+        # This button is used to start or restart the pursuit controller node
+        if msg.buttons[JOYButtons.SHARE] == 1 and self.last_button_states[JOYButtons.SHARE] == 0:
+            rospy.loginfo("Trigger button pressed - checking for existing node instance.")
+            # Check if there's an already running instance
+            if self.pursuit_controller_process is not None and self.pursuit_controller_process.poll() is None:
+                rospy.loginfo("Another instance is running. Restarting the node...")
+                self.pursuit_controller_process.terminate()
+                try:
+                    self.pursuit_controller_process.wait(timeout=5)
+                except Exception as e:
+                    rospy.logwarn("Node did not terminate gracefully: %s", e)
+                    self.pursuit_controller_process.kill()
+            else:
+                rospy.loginfo("No running instance found. Starting a new node.")
 
-        # Update button state history to avoid repeated triggers
+            # Start (or restart) the node process
+            self.pursuit_controller_process = subprocess.Popen(["rosrun", "uav_gazebo", "pursuit_controller"])
+            # Teleport the drone to a new position
+            self.publish_model_state('drone', (0.0, 0.0, 6.0), (0.0, 0.0, 0.0, 1.0))
+            
+ 
+        # Update button state history to avoid repeated triggers (edge detection)
         self.last_button_states = list(msg.buttons)
 
         # Publish control command based on current mode using scaled joystick axes
