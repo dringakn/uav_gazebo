@@ -14,7 +14,19 @@
 	<node name="joy_node" pkg="joy" type="joy_node">
 		<remap from="joy" to="joy" />
 	</node>
-	<!-- Spawn joystick drone controller -->
+	<!--
+	Spawn joystick drone controller :
+	PS4 controller:
+	- Left Stick: X, Y
+	- Right Stick: Z, Yaw
+	- R2/R2: takeoff/land
+	- L1: THRUST_TORQUE Mode
+	- R1: INACTIVE, STOP, SWITCHOFF, DROP
+	- CROSS: POSITION_YAW Mode
+	- CIRCLE: VELOCITY_YAWRATE Mode
+	- SQUARE: THRUST_ATTITUDE Mode
+	- TRIANGLE: THRUST_VELOCITY Mode
+	-->
 	<node name="joy_cont" pkg="uav_gazebo" type="joy_controller" output="screen" />
 	<!--
 	Call the service to switch the mode:
