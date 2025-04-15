@@ -274,6 +274,7 @@ plt.ylabel('Z Position [m]')
 plt.legend()
 
 plt.tight_layout()
+plt.gcf().canvas.mpl_connect('key_press_event', lambda event: plt.close() if event.key == 'escape' else None)
 plt.show()
 
 # Plot Euler angles over time
@@ -295,4 +296,5 @@ plt.ylabel('Yaw [rad]')
 plt.legend()
 
 plt.tight_layout()
+plt.gcf().canvas.mpl_connect('key_press_event', lambda event: plt.close() if event.key == 'escape' else None)
 plt.show()
