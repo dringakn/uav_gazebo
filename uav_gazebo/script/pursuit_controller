@@ -58,7 +58,7 @@ DEFAULT_KI_YAW = 0.0
 
 DEFAULT_USE_FEEDFORWARD = True
 DEFAULT_ACCELERATION_FEEDFORWARD_GAIN = 0.1
-INGERAL_LIMIT = 1
+INTEGRAL_LIMIT = 1
 DEFAULT_MAX_LINEAR_VELOCITY = 12.0  # meters/second
 DEFAULT_MAX_ANGULAR_VELOCITY = math.pi / 2  # radians/second
 
@@ -108,7 +108,7 @@ class PurePursuitController(object):
         self.kp_pos = rospy.get_param("~kp_pos", DEFAULT_KP_POS)
         self.kd_pos = rospy.get_param("~kd_pos", DEFAULT_KD_POS)
         self.ki_pos = rospy.get_param("~ki_pos", DEFAULT_KI_POS)
-        self.integral_limit = INGERAL_LIMIT
+        self.integral_limit = INTEGRAL_LIMIT
 
         self.kp_yaw = rospy.get_param("~kp_yaw", DEFAULT_KP_YAW)
         self.kd_yaw = rospy.get_param("~kd_yaw", DEFAULT_KD_YAW)
@@ -530,7 +530,7 @@ class PurePursuitController(object):
         cmd_msg = VelocityYawRateControl()
         cmd_msg.velocity.x = vel_x
         cmd_msg.velocity.y = vel_y
-        cmd_msg.velocity.x = vel_z
+        cmd_msg.velocity.z = vel_z
         cmd_msg.yaw_rate = yaw_rate
         cmd_msg.body_frame = False
         self.control_pub_velocity_yawrate.publish(cmd_msg)
