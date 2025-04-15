@@ -13,6 +13,8 @@ from uav_gazebo_msgs.msg import (
     ControlMode
 )
 from uav_gazebo_msgs.srv import SwitchMode
+from gazebo_msgs.msg import ModelState
+from geometry_msgs.msg import Point, Quaternion, Twist
 
 # Define joystick button enum
 class JOYButtons:
@@ -22,6 +24,8 @@ class JOYButtons:
     TRIANGLE = 3    # THRUST_VELOCITY
     L1 = 4          # THRUST_TORQUE
     R1 = 5          # INACTIVE, STOP, SWITCHOFF, DROP
+    LEFT = 11       # RESET DRONE POSITION
+    RIGHT = 12      # RESET DRONE POSITION
 
 # Define joystick axis enum
 class JOYAxes:
@@ -73,6 +77,7 @@ class JoyDroneController:
         self.pub_thrust_torque = rospy.Publisher('/drone/thrust_torque/command', ThrustTorqueControl, queue_size=10)
         self.pub_thrust_velocity = rospy.Publisher('/drone/thrust_velocity/command', ThrustVelocityControl, queue_size=10)
         self.pub_velocity_yawrate = rospy.Publisher('/drone/velocity_yawrate/command', VelocityYawRateControl, queue_size=10)
+        self.pub_model_state = rospy.Publisher('/gazebo/set_model_state', ModelState, queue_size=10)
 
         # Wait for the switch_mode service and create a proxy
         rospy.wait_for_service('/drone/switch_mode')
@@ -80,7 +85,36 @@ class JoyDroneController:
 
         rospy.Subscriber('/joy', Joy, self.joy_callback)
         self.last_button_states = []
-        rospy.loginfo("JoyDroneController started in %s mode.", MODE_NAME[self.current_mode])
+        rospy.loginfo(f"JoyDroneController started in {MODE_NAME[self.current_mode]} mode.")
+
+    def publish_model_state(self, model_name, position, orientation, twist=None, reference_frame='world'):
+        """
+        Publishes the state of a Gazebo model using the provided parameters.
+        
+        Parameters:
+        model_name (str): Name of the model in Gazebo.
+        position (tuple): A 3-tuple (x, y, z) for the position.
+        orientation (tuple): A 4-tuple (x, y, z, w) representing the quaternion.
+        twist (tuple, optional): A 6-tuple (lin_x, lin_y, lin_z, ang_x, ang_y, ang_z).
+                                Defaults to zero twist if not provided.
+        reference_frame (str, optional): The frame of reference. Defaults to 'world'.
+        """
+        # If no twist is provided, use zero velocity.
+        if twist is None:
+            twist = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        
+        # Create the ModelState message.
+        state_msg = ModelState()
+        state_msg.model_name = model_name
+        state_msg.pose.position = Point(*position)
+        state_msg.pose.orientation = Quaternion(*orientation)
+        state_msg.twist.linear = Vector3(twist[0], twist[1], twist[2])
+        state_msg.twist.angular = Vector3(twist[3], twist[4], twist[5])
+        state_msg.reference_frame = reference_frame
+
+        # Publish the message.
+        self.pub_model_state.publish(state_msg)
+        rospy.loginfo(f"Published new state for model: {model_name}")
 
     def joy_callback(self, msg):
         # Initialize last_button_states if empty
@@ -102,11 +136,23 @@ class JoyDroneController:
                 req.mode = new_mode
                 response = self.switch_mode_client(req)
                 if response.success:
-                    rospy.loginfo("Switched drone mode to: %s", MODE_NAME[new_mode])
+                    rospy.loginfo(f"Switched drone mode to: {MODE_NAME[new_mode]}")
                 else:
-                    rospy.logerr("Failed to switch drone mode to: %s", MODE_NAME[new_mode])
+                    rospy.logerr(f"Failed to switch drone mode to: {MODE_NAME[new_mode]}")
             except rospy.ServiceException as e:
-                rospy.logerr("Switch mode service call failed: %s", e)
+                rospy.logerr(f"Switch mode service call failed: {e}")
+
+        # Check for LEFT or RIGHT button press to set the drone position
+        # Using rising edge detection based on button state changes.
+        if len(msg.buttons) > JOYButtons.LEFT:
+            if msg.buttons[JOYButtons.LEFT] == 1 and self.last_button_states[JOYButtons.LEFT] == 0:
+                rospy.loginfo("LEFT button pressed: Resetting drone position at (0,0,6).")
+                self.publish_model_state('drone', (0.0, 0.0, 6.0), (0.0, 0.0, 0.0, 1.0))
+        if len(msg.buttons) > JOYButtons.RIGHT:
+            if msg.buttons[JOYButtons.RIGHT] == 1 and self.last_button_states[JOYButtons.RIGHT] == 0:
+                rospy.loginfo("RIGHT button pressed: Setting drone position at (0,0,1).")
+                self.publish_model_state('drone', (0.0, 0.0, 1.0), (0.0, 0.0, 0.0, 1.0))
+
 
         # Update button state history to avoid repeated triggers
         self.last_button_states = list(msg.buttons)
@@ -186,6 +232,7 @@ class JoyDroneController:
                     msg.axes[JOYAxes.LEFT_STICK_Y] * ATTITUDE_SCALE
                 )
             self.pub_thrust_torque.publish(cmd)
+        
         # In INACTIVE mode, no control command is published.
 
     def spin(self):

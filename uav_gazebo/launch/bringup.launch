@@ -26,6 +26,7 @@
 	- CIRCLE: VELOCITY_YAWRATE Mode
 	- SQUARE: THRUST_ATTITUDE Mode
 	- TRIANGLE: THRUST_VELOCITY Mode
+	- LEFT/RIGHT STICK BUTTON: RESET DRONE POSITION
 	-->
 	<node name="joy_cont" pkg="uav_gazebo" type="joy_controller" output="screen" />
 	<!--
