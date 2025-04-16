@@ -40,4 +40,9 @@
 	THRUST_TORQUE = 5
 	-->
 	<node name="switch_mode_service" pkg="rosservice" type="rosservice" args="call --wait /drone/switch_mode '{mode: {mode: 2}}'" />
+	<!-- Launch RQT parameters for dynamic parameters tunning -->
+	<node name="rqt_reconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure" output="screen">
+		<param name="use_gtk" value="false" />
+		<param name="use_qt_gui" value="true" />
+	</node>
 </launch>
