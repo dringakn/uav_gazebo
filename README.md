@@ -278,3 +278,145 @@ which can be forwarded to the thrust and attitude control described above. Note 
 #### Velocity & yaw rate
 
 This control mode consists in nothing but a slightly modified version of the **position and yaw** controller. In this case, one can imagine to set the proportional gain of the position controller to zero (in this way, only the desired velocity will be regulated). Similarly, in the attitude controller one can still regulate the first two angles to the values produced by the velocity controller (to properly orient the thrust direction), while for the yaw regulation it suffices to set the proportional gain to zero (so that only the yaw rate will be taken into account).
+
+## Pure Pursuit Controller Node
+
+### 1. Overview
+
+A ROS node that implements a 3‑D pure‑pursuit algorithm over a spline‑interpolated waypoint path.
+
+- Tracks `/drone/odometry` and publishes velocity + yaw‑rate commands.
+- Supports “movement”, “fixed” or “poi” yaw modes.
+- Live‑tunable via dynamic_reconfigure.
+
+### 2. Installation
+
+```bash
+cd ~/catkin_ws/src
+git clone https://github.com/dringakn/uav_gazebo.git
+cd ~/catkin_ws
+rosdep install --from-paths src --ignore-src -r -y
+catkin_make
+```
+
+### 3. Parameters
+
+| Name                            | Type   | Default          | Description                      |
+| ------------------------------- | ------ | ---------------- | -------------------------------- |
+| `~waypoints_file_path`          | string | path.json        | JSON file of 3‑D waypoints       |
+| `~trajectory_total_time`        | double | 100.0            | Total spline duration (s)        |
+| `~trajectory_resolution`        | int    | 1000             | Number of trajectory samples     |
+| `~control_loop_hz`              | double | 50.0             | Control update rate (Hz)         |
+| `~look_ahead_distance_min`      | double | 2.0              | Min pure‑pursuit look‑ahead (m)  |
+| `~look_ahead_distance_max`      | double | 8.0              | Max look‑ahead (m)               |
+| `~look_ahead_distance_factor`   | double | 1.0              | Speed→look‑ahead gain            |
+| `~kp_pos`, `~kd_pos`, `~ki_pos` | double | 1.2, 0.0001, 0.0 | Position PID gains               |
+| `~kp_yaw`, `~kd_yaw`, `~ki_yaw` | double | 1.0, 0.0001, 0.0 | Yaw PID gains                    |
+| `~orientation_mode`             | string | `"movement"`     | `"movement" \| "fixed" \| "poi"` |
+| `~fixed_yaw`                    | double | 1.57             | Yaw angle for “fixed” mode       |
+| `~poi_x`, `~poi_y`, `~poi_z`    | double | 50.0, 50.0, 30.0 | POI coords for “poi” mode        |
+| `~enable_plotting`              | bool   | true             | Publish error & metric streams   |
+
+### 4. Subscribed Topics
+
+- **`/drone/odometry`** (`nav_msgs/Odometry`): current pose & velocity.
+
+### 5. Published Topics
+
+- **`/drone/velocity_yawrate/command`** (`uav_gazebo_msgs/VelocityYawRateControl`)
+- **`/pure_pursuit_controller/generated_trajectory`** (`nav_msgs/Path`)
+- **`/pure_pursuit_controller/input_waypoints`** (`visualization_msgs/MarkerArray`)
+- **`/pure_pursuit_controller/lookahead_distance`**, **`/poi`**, **`/drone_position`** (`Marker` / `PoseStamped`)
+- Error & metric streams on `/controller/*` for rqt_plot.
+
+### 6. Launch Example
+
+```xml
+<launch>
+  <node pkg="uav_gazebo" type="pure_pursuit_controller.py" name="pure_pursuit" output="screen">
+    <param name="waypoints_file_path" value="$(find uav_gazebo)/missions/path.json"/>
+    <param name="control_loop_hz"        value="100.0"/>
+    <param name="orientation_mode"       value="poi"/>
+  </node>
+</launch>
+```
+
+### 7. Visualization & Tuning
+
+- **RViz**: add **Path**, **MarkerArray**, **Marker**, and **Pose** displays on the above topics.
+- **rqt_plot**: graph `/controller/error_*`, `/controller/control_commands`.
+- **rqt_reconfigure**: live‑adjust PID gains, look‑ahead, spline parameters.
+
+**Tip:**  
+Pairing RViz for spatial insight with rqt_plot + rqt_reconfigure gives the fastest feedback loop—ideal for zeroing in on under‑ or over‑shoot.
+
+## Joy Drone Controller Node
+
+### 1. Overview
+
+A ROS node that maps joystick inputs to UAV control commands and mode switches.
+
+- Switch between POSITION_YAW, VELOCITY_YAWRATE, THRUST_ATTITUDE, THRUST_VELOCITY, THRUST_TORQUE, INACTIVE via buttons.
+- Reset or teleport the drone in Gazebo with LEFT/RIGHT buttons.
+- Launches/restarts the pure‑pursuit controller with the SHARE button.
+
+### 2. Installation
+
+```bash
+cd ~/catkin_ws/src
+git clone https://github.com/dringakn/uav_gazebo.git
+cd ~/catkin_ws
+rosdep install --from-paths src --ignore-src -r -y
+catkin_make
+```
+
+### 3. Joystick Mapping
+
+| Button       | Action                                 |
+| ------------ | -------------------------------------- |
+| CROSS (0)    | Switch to POSITION_YAW                 |
+| CIRCLE (1)   | Switch to VELOCITY_YAWRATE             |
+| SQUARE (2)   | Switch to THRUST_ATTITUDE              |
+| TRIANGLE (3) | Switch to THRUST_VELOCITY              |
+| L1 (4)       | Switch to THRUST_TORQUE                |
+| R1 (5)       | INACTIVE / STOP                        |
+| LEFT (11)    | Teleport drone to (0,0,6)              |
+| RIGHT (12)   | Teleport drone to (0,0,1)              |
+| SHARE (8)    | (Re)start pure‑pursuit controller node |
+
+| Axis           | Scales                                    |
+| -------------- | ----------------------------------------- |
+| LEFT_STICK_X/Y | Position or velocity (×10 or ×1)          |
+| RIGHT_STICK_X  | Yaw or attitude (×π)                      |
+| RIGHT_STICK_Y  | Altitude / thrust (×10)                   |
+| L2 / R2        | Acceleration or attitude rates (×1 or ×π) |
+
+### 4. Subscribed Topic
+
+- **`/joy`** (`sensor_msgs/Joy`)
+
+### 5. Published Topics & Services
+
+- **`/drone/position_yaw/command`** (`PositionYawControl`)
+- **`/drone/velocity_yawrate/command`** (`VelocityYawRateControl`)
+- **`/drone/thrust_attitude/command`** (`ThrustAttitudeControl`)
+- **`/drone/thrust_velocity/command`** (`ThrustVelocityControl`)
+- **`/drone/thrust_torque/command`** (`ThrustTorqueControl`)
+- **`/gazebo/set_model_state`** (`gazebo_msgs/ModelState`)
+- **`/drone/switch_mode`** (`SwitchMode` service)
+
+### 6. Launch Example
+
+```xml
+<launch>
+  <node pkg="uav_gazebo" type="joy_controller.py" name="joy_drone_controller" output="screen">
+    <param name="~deadzone" value="0.05"/>
+  </node>
+</launch>
+```
+
+### 7. Tips
+
+- Use **rqt_graph** to verify topic flow.
+- Tune axis dead‑zones in your joystick config for smoother control.
+- Ensure the `/drone/switch_mode` service is available before starting.
