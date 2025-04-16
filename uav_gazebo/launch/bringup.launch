@@ -41,8 +41,10 @@
 	-->
 	<node name="switch_mode_service" pkg="rosservice" type="rosservice" args="call --wait /drone/switch_mode '{mode: {mode: 2}}'" />
 	<!-- Launch RQT parameters for dynamic parameters tunning -->
-	<node name="rqt_reconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure" output="screen">
+	<node name="rqt_reconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure" output="screen" respawn="true">
 		<param name="use_gtk" value="false" />
 		<param name="use_qt_gui" value="true" />
 	</node>
+	<!-- Launch rqt_plot monitoring the controller error topics -->
+	<node pkg="rqt_plot" type="rqt_plot" name="plot_controller_errors" args="/controller/error_x /controller/error_y /controller/error_z /controller/yaw_error /controller/distance_to_waypoint /controller/yaw_rate /controller/control_commands" output="screen" respawn="true" />
 </launch>
