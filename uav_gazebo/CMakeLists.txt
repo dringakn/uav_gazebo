@@ -57,14 +57,14 @@ target_link_libraries(${PROJECT_NAME}_plugin ${catkin_LIBRARIES} ${GAZEBO_LIBRAR
 add_executable(simple_drone_manager src/simple_drone_manager.cpp)
 target_link_libraries(simple_drone_manager ${catkin_LIBRARIES})
 
-add_executable(example_rucking_position src/example_rucking_position.cpp)
-target_link_libraries(example_rucking_position 
+add_executable(example_ruckig_position src/example_ruckig_position.cpp)
+target_link_libraries(example_ruckig_position 
                       ${catkin_LIBRARIES} 
                       ${orocos_kdl_LIBRARIES}
                       ruckig::ruckig)
 
 install(
-  TARGETS ${PROJECT_NAME}_plugin simple_drone_manager example_rucking_position
+  TARGETS ${PROJECT_NAME}_plugin simple_drone_manager example_ruckig_position
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
