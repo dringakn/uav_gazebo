@@ -3,6 +3,15 @@
 Plugin for simple simulation of a quad-copter in Gazebo and ROS.
 
 **Tested with ROS Noetic**
+### Installation
+
+```bash
+cd ~/catkin_ws/src
+git clone https://github.com/dringakn/uav_gazebo.git
+cd ~/catkin_ws
+rosdep install --from-paths src --ignore-src -r -y
+catkin build
+```
 
 ## An example for the impatients
 
@@ -296,7 +305,7 @@ cd ~/catkin_ws/src
 git clone https://github.com/dringakn/uav_gazebo.git
 cd ~/catkin_ws
 rosdep install --from-paths src --ignore-src -r -y
-catkin_make
+catkin build
 ```
 
 ### 3. Parameters
@@ -367,7 +376,7 @@ cd ~/catkin_ws/src
 git clone https://github.com/dringakn/uav_gazebo.git
 cd ~/catkin_ws
 rosdep install --from-paths src --ignore-src -r -y
-catkin_make
+catkin build
 ```
 
 ### 3. Joystick Mapping
