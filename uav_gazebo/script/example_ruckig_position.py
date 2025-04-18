@@ -11,7 +11,15 @@ rucking python bindings installation:
     cd /tmp
     git clone https://github.com/dringakn/ruckig.git
     cd ruckig
-    pip install .
+    pip3 install .
+    TIP:
+        if encountering issue: AttributeError: module 'lib' has no attribute 'X509_V_FLAG_NOTIFY_POLICY'
+            cd /tmp
+            curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+        This will wipe out the system‐broken pip and re‐install a fresh copy
+            sudo python3 get-pip.py
+        Upgrade setuptools/wheel under the fresh pip
+            pip3 install --upgrade setuptools wheel
 """
 
 import rospy
