@@ -22,4 +22,7 @@
   <depend>trajectory_msgs</depend>
   <depend>kdl_parser</depend>
 
+  <!-- sudo apt install ros-<DISTRO>-kdl-parser-py -->
+  <depend>kdl_parser_py</depend>
+
 </package>

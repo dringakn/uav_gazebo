@@ -11,7 +11,7 @@
 	<node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen" />
 	<!-- 3) Launch RViz, making sure it subscribes to /robot_description -->
 	<node name="rviz" pkg="rviz" type="rviz" args="-d $(find uav_gazebo)/rviz/ruckig.rviz" required="true" />
-	<!-- 4) Launch ruckig test node -->
+	<!-- 4) Launch ruckig test node (add .py in the type node to test python node) -->
 	<node name="example_ruckig_position" pkg="uav_gazebo" type="example_ruckig_position" output="screen">
 		<!-- 
 		this will populate ~/.max_velocity, ~/.initial_position, etc. 

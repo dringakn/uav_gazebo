@@ -68,3 +68,9 @@ install(
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
+
+# Install your Python node
+catkin_install_python(PROGRAMS
+  script/example_ruckig_position.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
