@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<launch>
+
+	<!-- TIP: After urdf modification test with the following command
+		rosrun xacro xacro ~/src/uav_gazebo/uav_gazebo/urdf/example_ruckig_position.xacro > /tmp/out.urdf
+	 -->
+
+	<!-- 1) Load the description into the parameter server -->
+	<param name="robot_description" command="$(find xacro)/xacro $(find uav_gazebo)/urdf/example_ruckig_position.xacro" />
+	<!-- 2) Start robot_state_publisher to broadcast TFs -->
+	<node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen" />
+	<!-- 3) Launch RViz, making sure it subscribes to /robot_description -->
+	<node name="rviz" pkg="rviz" type="rviz" args="-d $(find uav_gazebo)/rviz/ruckig.rviz" required="true" />
+	<!-- 4) Launch ruckig test node -->
+	<node name="example_rucking_position" pkg="uav_gazebo" type="example_rucking_position" output="screen">
+		<!-- 
+		this will populate ~/.max_velocity, ~/.initial_position, etc. 
+		Because we used inside node tag, all entries in ruckig_params.yaml 
+		become private params for that node, exactly where our 
+		code is doing pnh.getParam("max_velocity", …).
+		-->
+		<rosparam file="$(find uav_gazebo)/cfg/ruckig_params.yaml" command="load"/>
+	</node>
+</launch>

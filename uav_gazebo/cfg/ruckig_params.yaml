@@ -1,0 +1,12 @@
+# 3‑element lists everywhere, matching DOF=3
+max_velocity:     [ 3.0,  1.0,  3.0]
+max_acceleration: [ 3.0,  2.0,  1.0]
+max_jerk:         [ 4.0,  3.0,  2.0]
+
+initial_position:     [0.0,  0.0, 0.5]
+initial_velocity:     [0.0, -2.2, -0.5]
+initial_acceleration: [0.0,  2.5, -0.5]
+
+target_position:     [ 5.0, -2.0, -3.5]
+target_velocity:     [ 0.0, -0.5, -2.0]
+target_acceleration: [ 0.0,  0.0,  0.5]
