@@ -43,14 +43,14 @@
   <!-- Link 1 -->
   <link name="link1">
     <inertial>
-      <origin xyz="0 ${link_length1/2} 0" rpy="0 0 0"/>
+      <origin xyz="0 ${link_length1/2} 0" rpy="1.5708 0 0"/>
       <mass    value="${mass1}"/>
       <inertia
         ixx="0.010" iyy="0.010" izz="0.005"
         ixy="0"     ixz="0"     iyz="0"/>
     </inertial>
     <visual>
-      <origin xyz="0 ${link_length1/2} 0" rpy="0 0 0"/>
+      <origin xyz="0 ${link_length1/2} 0" rpy="1.5708 0 0"/>
       <geometry>
         <cylinder radius="${link_radius}" length="${link_length1}"/>
       </geometry>
@@ -63,14 +63,14 @@
   <!-- Link 2 -->
   <link name="link2">
     <inertial>
-      <origin xyz="0 ${link_length2/2} 0" rpy="0 0 0"/>
+      <origin xyz="0 ${link_length2/2} 0" rpy="1.5708 0 0"/>
       <mass    value="${mass2}"/>
       <inertia
         ixx="0.008" iyy="0.008" izz="0.004"
         ixy="0"     ixz="0"     iyz="0"/>
     </inertial>
     <visual>
-      <origin xyz="0 ${link_length2/2} 0" rpy="0 0 0"/>
+      <origin xyz="0 ${link_length2/2} 0" rpy="1.5708 0 0"/>
       <geometry>
         <cylinder radius="${link_radius}" length="${link_length2}"/>
       </geometry>
@@ -83,14 +83,14 @@
   <!-- Link 3 -->
   <link name="link3">
     <inertial>
-      <origin xyz="0 ${link_length3/2} 0" rpy="0 0 0"/>
+      <origin xyz="0 ${link_length3/2} 0" rpy="1.5708 0 0"/>
       <mass    value="${mass3}"/>
       <inertia
         ixx="0.006" iyy="0.006" izz="0.003"
         ixy="0"     ixz="0"     iyz="0"/>
     </inertial>
     <visual>
-      <origin xyz="0 ${link_length3/2} 0" rpy="0 0 0"/>
+      <origin xyz="0 ${link_length3/2} 0" rpy="1.5708 0 0"/>
       <geometry>
         <cylinder radius="${link_radius}" length="${link_length3}"/>
       </geometry>
