@@ -209,9 +209,9 @@ class PurePursuitController(object):
         )
 
         # Publishers for Visualization
-        self.waypoints_pub = rospy.Publisher(
-            "/pure_pursuit_controller/input_waypoints", 
-            MarkerArray, queue_size=10, latch=True
+        self.input_path_pub = rospy.Publisher(
+            "/input_waypoints",
+            Path, queue_size=1, latch=True
         )
 
         self.drone_position_pub = rospy.Publisher(
@@ -607,6 +607,8 @@ class PurePursuitController(object):
             rospy.loginfo("Waypoint {}: x={}, y={}, z={}".format(idx, wp[0], wp[1], wp[2]))
 
         waypoints = np.array(waypoints)
+        if self.enable_plotting:
+            self.publish_input_waypoints(waypoints)
 
         # Assign Time Stamps
         num_waypoints = len(waypoints)
@@ -642,29 +644,23 @@ class PurePursuitController(object):
         return traj_time, trajectory
 
     def publish_input_waypoints(self, waypoints):
-        """Publish the input waypoints as a MarkerArray for RViz visualization."""
-        marker_array = MarkerArray()
-        for idx, point in enumerate(waypoints):
-            marker = Marker()
-            marker.header.frame_id = "world"  # Adjust to your frame
-            marker.header.stamp = rospy.Time.now()
-            marker.ns = "input_waypoints"
-            marker.id = idx
-            marker.type = Marker.SPHERE
-            marker.action = Marker.ADD
-            marker.pose.position.x = float(point[0])
-            marker.pose.position.y = float(point[1])
-            marker.pose.position.z = float(point[2])
-            marker.pose.orientation = Quaternion(w=1.0, x=0.0, y=0.0, z=0.0)
-            marker.scale = Vector3(x=1.0, y=1.0, z=1.0)  # Size of the sphere
-            marker.color.a = 0.5  # Partially opaque
-            marker.color.r = 1.0  # Red color
-            marker.color.g = 0.0
-            marker.color.b = 0.0
-            marker_array.markers.append(marker)
+        """Publish the input waypoints as a Path for RViz visualization."""
+        path = Path()
+        path.header.frame_id = "world"
+        path.header.stamp = rospy.Time.now()
 
-        self.waypoints_pub.publish(marker_array)
-        rospy.loginfo("Published input waypoints for RViz visualization.")
+        for (x, y, z) in waypoints:
+            pose = PoseStamped()
+            pose.header = path.header
+            pose.pose.position.x = x
+            pose.pose.position.y = y
+            pose.pose.position.z = z
+            # leave orientation identity or configure as needed
+            pose.pose.orientation = Quaternion(w=1.0, x=0, y=0, z=0)
+            path.poses.append(pose)
+
+        self.input_path_pub.publish(path)
+        rospy.loginfo("Published input waypoints as Path.")
 
     def publish_drone_position(self):
         """Publish the current drone position as a PoseStamped message."""
