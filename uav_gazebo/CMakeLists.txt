@@ -21,6 +21,7 @@ find_package(catkin REQUIRED COMPONENTS
 
 generate_dynamic_reconfigure_options(
   cfg/PurePursuitController.cfg
+  cfg/JoyController.cfg
 )
 
 # looks for a system‑ or workspace‑installed Ruckig/KDL/Gazebo package
@@ -72,5 +73,7 @@ install(
 # Install your Python node
 catkin_install_python(PROGRAMS
   script/example_ruckig_position.py
+  script/waypoint_follower_ruckig
+  script/pursuit_controller
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
