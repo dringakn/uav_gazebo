@@ -15,6 +15,8 @@ rucking python bindings installation:
             pip3 install --upgrade setuptools wheel
 """
 
+#!/usr/bin/env python3
+import json
 import time
 import rospy
 from nav_msgs.msg import Path
@@ -36,76 +38,91 @@ class ScurveTrajectoryBuilder:
         inp.min_velocity, inp.min_acceleration             = limits['min']
         return inp
 
-    def build_path(self, inp, frame_id, dt):
-        # measure generation time
+    def build_segment(self, inp, dt, start_time):
+        """Plan one segment, return list of (t_offset, pos)."""
         t0 = time.perf_counter()
-        result = self.otg.calculate(inp, self.trajectory)
-        gen_time = time.perf_counter() - t0
-
-        if result != Result.Working:
-            raise RuntimeError(f"Ruckig failed: {result}")
+        res = self.otg.calculate(inp, self.trajectory)
+        gen = time.perf_counter() - t0
+        if res != Result.Working:
+            raise RuntimeError(f"Segment failed: {res}")
 
         steps = int(self.trajectory.duration / dt) + 1
-        path = Path(header=Header(frame_id=frame_id, stamp=rospy.Time.now()))
-
+        samples = []
         for i in range(steps):
             t = i * dt
             pos, vel, acc = self.trajectory.at_time(t)
-            ps = PoseStamped(header=path.header)
-            ps.header.stamp = rospy.Time.now()
-            ps.pose.position.x, ps.pose.position.y, ps.pose.position.z = pos
-            path.poses.append(ps)
+            samples.append((start_time + t, pos))
+        # return end‐velocity & acceleration for chaining
+        # query the final velocity & acceleration
+        _, end_vel, end_acc = self.trajectory.at_time(self.trajectory.duration)
+        
+        return samples, self.trajectory.duration, gen, end_vel, end_acc
 
-        # richer logging
-        rospy.loginfo(
-            "DOF: %d | Duration: %.3fs | Samples: %d | Gen time: %.4fs",
-            self.trajectory.degrees_of_freedom,
-            self.trajectory.duration,
-            len(path.poses),
-            gen_time
-        )
-        rospy.loginfo(
-            "Stages: %s | Extrema: %s | Profiles: %s",
-            self.trajectory.intermediate_durations,
-            self.trajectory.position_extrema,
-            self.trajectory.profiles
-        )
+    def build_from_waypoints(self, json_path, limits, dt, frame_id):
+        with open(json_path) as f:
+            data = json.load(f)
 
+        wp = [(
+            p['pose']['position']['x'],
+            p['pose']['position']['y'],
+            p['pose']['position']['z']
+        ) for p in data['poses']]
+
+        # initialize header
+        now = rospy.Time.now()
+        path = Path(header=Header(frame_id=frame_id, stamp=now))
+
+        # start from zero-state
+        cur_vel = [0.]*self.axes
+        cur_acc = [0.]*self.axes
+        t_offset = 0.0
+        total_gen = 0.0
+
+        for i in range(len(wp)-1):
+            current = (wp[i], cur_vel, cur_acc)
+            target  = (wp[i+1], [0.]*self.axes, [0.]*self.axes)
+            inp     = self.configure(current, target, limits)
+
+            samples, dur, gen, cur_vel, cur_acc = \
+                self.build_segment(inp, dt, t_offset)
+            total_gen += gen
+
+            # append each sample as PoseStamped
+            for t_rel, pos in samples:
+                ps = PoseStamped(header=path.header)
+                ps.header.stamp = now + rospy.Duration(t_rel)
+                ps.pose.position.x, ps.pose.position.y, ps.pose.position.z = pos
+                path.poses.append(ps)
+
+            rospy.loginfo("Segment %d→%d: dur=%.3fs gen=%.4fs", i, i+1, dur, gen)
+            t_offset += dur
+
+        rospy.loginfo("Combined: segments=%d total_samples=%d total_gen=%.4fs",
+                      len(wp)-1, len(path.poses), total_gen)
         return path
-    
-    
+
 class ScurveTrajectoryNode:
     def __init__(self):
         rospy.init_node('scurve_trajectory_node')
         self.pub      = rospy.Publisher('ruckig_path', Path, latch=True, queue_size=1)
         self.dt       = rospy.get_param('~sample_dt', 0.02)
         self.frame_id = rospy.get_param('~frame_id', 'world')
-        self.builder  = ScurveTrajectoryBuilder()
+        self.wayfile  = rospy.get_param('~waypoints_file', '/root/catkin_ws/src/uav_gazebo/uav_gazebo/missions/path.json')
 
-        # load static parameters here—or expose a service to reconfigure at runtime
-        current = (
-            [0.0,  0.0,  0.5],
-            [0.0, -2.2, -0.5],
-            [0.0,  2.5, -0.5],
-        )
-        target = (
-            [ 5.0, -2.0, -3.5],
-            [ 0.0, -0.5, -2.0],
-            [ 0.0,  0.0,  0.5],
-        )
-        # Velocity, acceleration, jerk limits
-        # Note: The jerk min is not required.
         limits = {
-            'max': ([3.0, 1.0, 3.0], [3.0, 2.0, 1.0], [4.0, 3.0, 2.0]),
-            'min': ([-1.0, -0.5, -3.0], [-2.0, -1.0, -2.0]),
+            'max': ([3.0,1.0,3.0], [3.0,2.0,1.0], [4.0,3.0,2.0]),
+            'min': ([-1.0,-0.5,-3.0], [-2.0,-1.0,-2.0]),
         }
-        self.inp = self.builder.configure(current, target, limits)
+        self.builder = ScurveTrajectoryBuilder()
+        self.limits  = limits
 
     def run(self):
         try:
-            path = self.builder.build_path(self.inp, self.frame_id, self.dt)
+            path = self.builder.build_from_waypoints(
+                self.wayfile, self.limits, self.dt, self.frame_id
+            )
             self.pub.publish(path)
-            rospy.loginfo("Published /ruckig_path")
+            rospy.loginfo("Published /ruckig_path with %d poses", len(path.poses))
             rospy.spin()
         except Exception as e:
             rospy.logerr(e)
