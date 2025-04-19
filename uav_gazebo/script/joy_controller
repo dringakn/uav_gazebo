@@ -67,12 +67,14 @@ VELOCITY_SCALE = 1.0
 ACCELERATION_SCALE = 1.0
 THRUST_SCALE = 10.0
 ATTITUDE_SCALE = math.pi
+DEADZONE = 0.1
 
 class JoyDroneController:
     def __init__(self):
         rospy.init_node('joy_drone_controller')
 
-        # Set default mode
+        self.deadzone = DEADZONE
+        # Set default mode        
         self.current_mode = ControlMode.VELOCITY_YAWRATE
         # Initialize node process (pursuit controller)
         self.pursuit_controller_process = None
@@ -122,7 +124,18 @@ class JoyDroneController:
         self.pub_model_state.publish(state_msg)
         rospy.loginfo(f"Published new state for model: {model_name}")
 
+    def _dz(self, v):
+        #—— apply deadzone + re‑scale ——#
+        if abs(v) < self.deadzone:
+            return 0.0
+        sign = math.copysign(1.0, v)
+        # linear remap from [deadzone,1]→[0,1]
+        return sign * (abs(v) - self.deadzone) / (1.0 - self.deadzone)
+
     def joy_callback(self, msg):
+
+        axes = [self._dz(v) for v in msg.axes]
+
         # Initialize last_button_states if empty
         if not self.last_button_states:
             self.last_button_states = list(msg.buttons)
@@ -177,6 +190,7 @@ class JoyDroneController:
 
             # Start (or restart) the node process
             self.pursuit_controller_process = subprocess.Popen(["rosrun", "uav_gazebo", "pursuit_controller"])
+            # self.pursuit_controller_process = subprocess.Popen(["rosrun", "uav_gazebo", "waypoint_follower_ruckig"])
             # Teleport the drone to a new position
             self.publish_model_state('drone', (0.0, 0.0, 6.0), (0.0, 0.0, 0.0, 1.0))
             
@@ -188,45 +202,45 @@ class JoyDroneController:
         if self.current_mode == ControlMode.POSITION_YAW:
             # Uses thrust and attitude controls
             cmd = PositionYawControl()
-            if len(msg.axes) >= 8:
+            if len(axes) >= 8:
                 cmd.position = Vector3(
-                    msg.axes[JOYAxes.LEFT_STICK_Y] * POSITION_SCALE,
-                    msg.axes[JOYAxes.LEFT_STICK_X] * POSITION_SCALE,
-                    msg.axes[JOYAxes.RIGHT_STICK_Y] * POSITION_SCALE
+                    axes[JOYAxes.LEFT_STICK_Y] * POSITION_SCALE,
+                    axes[JOYAxes.LEFT_STICK_X] * POSITION_SCALE,
+                    axes[JOYAxes.RIGHT_STICK_Y] * POSITION_SCALE
                 )
-            cmd.yaw = msg.axes[JOYAxes.RIGHT_STICK_X] * YAW_SCALE
+            cmd.yaw = axes[JOYAxes.RIGHT_STICK_X] * YAW_SCALE
             self.pub_position_yaw.publish(cmd)
 
         elif self.current_mode == ControlMode.VELOCITY_YAWRATE:
             cmd = VelocityYawRateControl()
-            if len(msg.axes) >= 8:
+            if len(axes) >= 8:
                 cmd.velocity = Vector3(
-                    msg.axes[JOYAxes.LEFT_STICK_Y] * VELOCITY_SCALE,
-                    msg.axes[JOYAxes.LEFT_STICK_X] * VELOCITY_SCALE,
-                    msg.axes[JOYAxes.RIGHT_STICK_Y] * VELOCITY_SCALE
+                    axes[JOYAxes.LEFT_STICK_Y] * VELOCITY_SCALE,
+                    axes[JOYAxes.LEFT_STICK_X] * VELOCITY_SCALE,
+                    axes[JOYAxes.RIGHT_STICK_Y] * VELOCITY_SCALE
                 )
                 cmd.acceleration = Vector3(
-                    msg.axes[JOYAxes.L2] * ACCELERATION_SCALE,
-                    msg.axes[JOYAxes.R2] * ACCELERATION_SCALE,
+                    axes[JOYAxes.L2] * ACCELERATION_SCALE,
+                    axes[JOYAxes.R2] * ACCELERATION_SCALE,
                     0.0
                 )
-            cmd.yaw_rate = msg.axes[JOYAxes.RIGHT_STICK_X] * YAW_SCALE
+            cmd.yaw_rate = axes[JOYAxes.RIGHT_STICK_X] * YAW_SCALE
             cmd.body_frame = True
             self.pub_velocity_yawrate.publish(cmd)
 
         elif self.current_mode == ControlMode.THRUST_ATTITUDE:
             # Thrust and Angle: The thrust is forwarded as is. For the attitude control, a proportional and derivative pseud-control is evaluated
             cmd = ThrustAttitudeControl()
-            if len(msg.axes) >= 7:
-                cmd.thrust = msg.axes[JOYAxes.RIGHT_STICK_Y] * THRUST_SCALE
+            if len(axes) >= 8:
+                cmd.thrust = axes[JOYAxes.RIGHT_STICK_Y] * THRUST_SCALE
                 cmd.attitude = Vector3(
-                    msg.axes[JOYAxes.RIGHT_STICK_X] * ATTITUDE_SCALE,
-                    msg.axes[JOYAxes.LEFT_STICK_X] * ATTITUDE_SCALE,
-                    msg.axes[JOYAxes.LEFT_STICK_Y] * ATTITUDE_SCALE
+                    axes[JOYAxes.RIGHT_STICK_X] * ATTITUDE_SCALE,
+                    axes[JOYAxes.LEFT_STICK_X] * ATTITUDE_SCALE,
+                    axes[JOYAxes.LEFT_STICK_Y] * ATTITUDE_SCALE
                 )
                 cmd.attitude_rates = Vector3(
-                    msg.axes[JOYAxes.L2] * ATTITUDE_SCALE,
-                    msg.axes[JOYAxes.R2] * ATTITUDE_SCALE,
+                    axes[JOYAxes.L2] * ATTITUDE_SCALE,
+                    axes[JOYAxes.R2] * ATTITUDE_SCALE,
                     0.0
                 )
             self.pub_thrust_attitude.publish(cmd)
@@ -234,16 +248,16 @@ class JoyDroneController:
         elif self.current_mode == ControlMode.THRUST_VELOCITY:
             # Thrust and AngVel: The thrust is forwarded as is, while the torque is computed using a proportional controller
             cmd = ThrustVelocityControl()
-            if len(msg.axes) >= 7:
-                cmd.thrust = msg.axes[JOYAxes.RIGHT_STICK_Y] * THRUST_SCALE
+            if len(axes) >= 8:
+                cmd.thrust = axes[JOYAxes.RIGHT_STICK_Y] * THRUST_SCALE
                 cmd.velocity = Vector3(
-                    msg.axes[JOYAxes.RIGHT_STICK_X] * VELOCITY_SCALE,
-                    msg.axes[JOYAxes.LEFT_STICK_X] * VELOCITY_SCALE,
-                    msg.axes[JOYAxes.LEFT_STICK_Y] * VELOCITY_SCALE
+                    axes[JOYAxes.RIGHT_STICK_X] * VELOCITY_SCALE,
+                    axes[JOYAxes.LEFT_STICK_X] * VELOCITY_SCALE,
+                    axes[JOYAxes.LEFT_STICK_Y] * VELOCITY_SCALE
                 )
                 cmd.acceleration = Vector3(
-                    msg.axes[JOYAxes.L2] * ACCELERATION_SCALE,
-                    msg.axes[JOYAxes.R2] * ACCELERATION_SCALE,
+                    axes[JOYAxes.L2] * ACCELERATION_SCALE,
+                    axes[JOYAxes.R2] * ACCELERATION_SCALE,
                     0.0
                 )
             self.pub_thrust_velocity.publish(cmd)
@@ -251,12 +265,12 @@ class JoyDroneController:
         elif self.current_mode == ControlMode.THRUST_TORQUE:
             # Direct control: thrust and torque are directly sent to move the drone
             cmd = ThrustTorqueControl()
-            if len(msg.axes) >= 4:
-                cmd.thrust = msg.axes[JOYAxes.RIGHT_STICK_Y] * THRUST_SCALE
+            if len(axes) >= 4:
+                cmd.thrust = axes[JOYAxes.RIGHT_STICK_Y] * THRUST_SCALE
                 cmd.torque = Vector3(
-                    msg.axes[JOYAxes.RIGHT_STICK_X] * ATTITUDE_SCALE,
-                    msg.axes[JOYAxes.LEFT_STICK_X] * ATTITUDE_SCALE,
-                    msg.axes[JOYAxes.LEFT_STICK_Y] * ATTITUDE_SCALE
+                    axes[JOYAxes.RIGHT_STICK_X] * ATTITUDE_SCALE,
+                    axes[JOYAxes.LEFT_STICK_X] * ATTITUDE_SCALE,
+                    axes[JOYAxes.LEFT_STICK_Y] * ATTITUDE_SCALE
                 )
             self.pub_thrust_torque.publish(cmd)
         
