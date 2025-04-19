@@ -74,6 +74,8 @@ class JoyDroneController:
         self.accel_scale    = rospy.get_param("~accel_scale", 1.0)
         self.thrust_scale   = rospy.get_param("~thrust_scale", 10.0)
         self.attitude_scale = rospy.get_param("~attitude_scale", math.pi)
+        self.controller_node = rospy.get_param("~controller_node", "pursuit_controller")
+        self.body_frame_input = rospy.get_param("~body_frame_input", True)
         
         # Set default mode        
         self.current_mode = ControlMode.VELOCITY_YAWRATE
@@ -138,19 +140,11 @@ class JoyDroneController:
         self.accel_scale    = config.accel_scale
         self.thrust_scale   = config.thrust_scale
         self.attitude_scale = config.attitude_scale
+        self.controller_node = config.controller_node
+        self.body_frame_input = config.body_frame_input
 
-        rospy.loginfo((
-            "[reconfigure] deadzone=%.3f  pos=%.1f  yaw=%.2f  vel=%.1f  "
-            "acc=%.1f  thrust=%.1f  att=%.2f"
-        ) % (
-            self.deadzone,
-            self.position_scale,
-            self.yaw_scale,
-            self.velocity_scale,
-            self.accel_scale,
-            self.thrust_scale,
-            self.attitude_scale
-        ))
+        rospy.loginfo(f"[reconfigure] controller_node={self.controller_node} deadzone={self.deadzone:.3f} pos_scale={self.position_scale:.1f} yaw_scale={self.yaw_scale:.2f} vel_scale={self.velocity_scale:.1f} acc_scale={self.accel_scale:.1f} thrust_scale={self.thrust_scale:.1f} attitude_scale={self.attitude_scale:.2f} body_frame_input={self.body_frame_input}")
+        
         return config
     
     def _dz(self, v):
@@ -218,8 +212,7 @@ class JoyDroneController:
                 rospy.loginfo("No running instance found. Starting a new node.")
 
             # Start (or restart) the node process
-            self.pursuit_controller_process = subprocess.Popen(["rosrun", "uav_gazebo", "pursuit_controller"])
-            # self.pursuit_controller_process = subprocess.Popen(["rosrun", "uav_gazebo", "waypoint_follower_ruckig"])
+            self.pursuit_controller_process = subprocess.Popen(["rosrun", "uav_gazebo", self.controller_node])
             # Teleport the drone to a new position
             self.publish_model_state('drone', (0.0, 0.0, 6.0), (0.0, 0.0, 0.0, 1.0))
             
@@ -254,7 +247,7 @@ class JoyDroneController:
                     0.0
                 )
             cmd.yaw_rate = axes[JOYAxes.RIGHT_STICK_X] * self.yaw_scale
-            cmd.body_frame = True
+            cmd.body_frame = self.body_frame_input
             self.pub_velocity_yawrate.publish(cmd)
 
         elif self.current_mode == ControlMode.THRUST_ATTITUDE:
