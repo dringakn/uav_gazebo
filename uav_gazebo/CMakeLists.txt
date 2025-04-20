@@ -74,6 +74,7 @@ install(
 catkin_install_python(PROGRAMS
   script/example_ruckig_position.py
   script/ruckig_offline_position.py
+  script/ruckig_offline_waypoints.py
   script/waypoint_follower_ruckig
   script/pursuit_controller
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
