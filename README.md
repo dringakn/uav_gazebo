@@ -188,11 +188,20 @@ These quantities are denoted as follows:
 The orientation of the drone frame can be obtained as a sequence of three elementary **local** rotations. In particular, we consider here the orientation matrix to be expressed by:
 
 ```math
-\mathbf{R} = \mathbf{R}_x (\varphi) \mathbf{R}_y (\theta) \mathbf{R}_z (\psi) = \begin{bmatrix}
-\cos(\psi) \cos(\theta) & -\sin(\psi) \cos(\theta) & \sin(\theta) \\
-\sin(\psi) \cos(\varphi) + \sin(\theta) \sin(\varphi) \cos(\psi) & -\sin(\psi) \sin(\theta) \sin(\varphi) + \cos(\psi) \cos(\varphi) & -\sin(\varphi) \cos(\theta) \\
-\sin(\psi) \sin(\varphi) - \sin(\theta) \cos(\psi) \cos(\varphi) & \sin(\psi) \sin(\theta) \cos(\varphi) + \sin(\varphi) \cos(\psi) & \cos(\theta) \cos(\varphi)
-\end{bmatrix}
+\mathbf{R} = \mathbf{R}_x(\varphi)\,\mathbf{R}_y(\theta)\,\mathbf{R}_z(\psi)
+= \left[
+\begin{array}{ccc}
+\cos\psi\cos\theta
+  & -\sin\psi\cos\theta
+  & \sin\theta\\
+\sin\psi\cos\varphi + \sin\theta\sin\varphi\cos\psi
+  & -\sin\psi\sin\theta\sin\varphi + \cos\psi\cos\varphi
+  & -\sin\varphi\cos\theta\\
+\sin\psi\sin\varphi - \sin\theta\cos\psi\cos\varphi
+  & \sin\psi\sin\theta\cos\varphi + \sin\varphi\cos\psi
+  & \cos\theta\cos\varphi
+\end{array}
+\right]
 ```
 
 With this parameterization, it is possible to link the angular rates to the angular velocity (in the world frame) via the relation:
