@@ -198,11 +198,11 @@ The orientation of the drone frame can be obtained as a sequence of three elemen
 With this parameterization, it is possible to link the angular rates to the angular velocity (in the world frame) via the relation:
 
 ```math
-\boldsymbol{\omega} = \mathrm{\mathbf{D}} (\varphi,\theta) \dot{\boldsymbol{\rho}} = \begin{vmatrix}
+\boldsymbol{\omega} = \mathrm{\mathbf{D}} (\varphi,\theta) \dot{\boldsymbol{\rho}} = \left\lvert \begin{matrix}
 1 & 0 & \sin\theta \\
 0 & \cos\varphi & -\sin\varphi\cos\theta \\
 0 & \sin\varphi & \cos\varphi \cos\theta
-\end{vmatrix} \dot{\boldsymbol{\rho}}
+\end{matrix} \right\rvert \dot{\boldsymbol{\rho}}
 ```
 
 Furthermore, the angular acceleration in the world frame is given by:
