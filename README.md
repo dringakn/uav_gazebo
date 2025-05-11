@@ -166,21 +166,19 @@ be described using a 12-dimensional state composed of:
 
 These quantities are denoted as follows:
 
-- **Position Vector**:
+- **Position Vector**:<!-- -->
 
   $$\mathbf{p} = \begin{bmatrix} x & y & z \end{bmatrix}^T$$
-![p](https://render.githubusercontent.com/render/math?math=\begin{bmatrix}x&y&z\end{bmatrix}^T)
 
-
-- **Velocity Vector**:
+- **Velocity Vector**:<!-- -->
 
   $$\mathbf{v} = \begin{bmatrix} v_x & v_y & v_z \end{bmatrix}^T$$
 
-- **Orientation Vector**:
+- **Orientation Vector**:<!-- -->
 
   $$\boldsymbol{\rho} = \begin{bmatrix} \varphi & \theta & \psi \end{bmatrix}^T$$
 
-- **Angular Velocity Vector**:
+- **Angular Velocity Vector**:<!-- -->
 
   $$\dot{\boldsymbol{\rho}} = \begin{bmatrix} \dot{\varphi} & \dot{\theta} & \dot{\psi} \end{bmatrix}^T$$
 
