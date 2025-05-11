@@ -166,22 +166,25 @@ be described using a 12-dimensional state composed of:
 
 These quantities are denoted as follows:
 
-- **Position Vector**:<!-- -->
+- **Position Vector**:
+```math
+  \mathbf{p} = \begin{bmatrix} x & y & z \end{bmatrix}^T
+```
+- **Velocity Vector**:
 
-  $$\mathbf{p} = \begin{bmatrix} x & y & z \end{bmatrix}^T$$
+```math
+  \mathbf{v} = \begin{bmatrix} v_x & v_y & v_z \end{bmatrix}^T
+```
+- **Orientation Vector**:
 
-- **Velocity Vector**:<!-- -->
+```math
+  \boldsymbol{\rho} = \begin{bmatrix} \varphi & \theta & \psi \end{bmatrix}^T
+```
+- **Angular Velocity Vector**:
 
-  $$\mathbf{v} = \begin{bmatrix} v_x & v_y & v_z \end{bmatrix}^T$$
-
-- **Orientation Vector**:<!-- -->
-
-  $$\boldsymbol{\rho} = \begin{bmatrix} \varphi & \theta & \psi \end{bmatrix}^T$$
-
-- **Angular Velocity Vector**:<!-- -->
-
-  $$\dot{\boldsymbol{\rho}} = \begin{bmatrix} \dot{\varphi} & \dot{\theta} & \dot{\psi} \end{bmatrix}^T$$
-
+```math
+  \dot{\boldsymbol{\rho}} = \begin{bmatrix} \dot{\varphi} & \dot{\theta} & \dot{\psi} \end{bmatrix}^T
+```
 The orientation of the drone frame can be obtained as a sequence of three elementary **local** rotations. In particular, we consider here the orientation matrix to be expressed by:
 
 $$
