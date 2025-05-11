@@ -107,11 +107,22 @@ class ScurveTrajectoryNode:
         self.pub      = rospy.Publisher('ruckig_path', Path, latch=True, queue_size=1)
         self.dt       = rospy.get_param('~sample_dt', 0.02)
         self.frame_id = rospy.get_param('~frame_id', 'world')
-        self.wayfile  = rospy.get_param('~waypoints_file', '/root/catkin_ws/src/uav_gazebo/uav_gazebo/missions/path.json')
+        self.max_vel = rospy.get_param('~max_velocity', 10.0)
+        self.max_acc = rospy.get_param('~max_acceleration', 10.0)
+        self.max_jerk = rospy.get_param('~max_jerk', 10.0)        
+        self.wayfile  = rospy.get_param('~waypoints_file', '/root/personal_ws/src/uav_gazebo/uav_gazebo/missions/path_lifted.json')
 
+        # NOTE: The min_jerk is not required.
         limits = {
-            'max': ([3.0,1.0,3.0], [3.0,2.0,1.0], [4.0,3.0,2.0]),
-            'min': ([-1.0,-0.5,-3.0], [-2.0,-1.0,-2.0]),
+            'max': (
+                [self.max_vel, self.max_vel, self.max_vel], 
+                [self.max_acc, self.max_acc, self.max_acc], 
+                [self.max_jerk, self.max_jerk, self.max_jerk]
+                ),
+            'min': (
+                [-self.max_vel, -self.max_vel, -self.max_vel], 
+                [-self.max_acc, -self.max_acc, -self.max_acc]
+                ),
         }
         self.builder = ScurveTrajectoryBuilder()
         self.limits  = limits
