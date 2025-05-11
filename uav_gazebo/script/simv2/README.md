@@ -78,9 +78,9 @@ simv2
 
 ### State Variables
 
-$$
+```math
 \mathbf{s} = \bigl(\mathbf{p},\;\mathbf{v},\;\mathbf{q},\;\boldsymbol\omega\bigr)
-$$
+```
 
 * $\mathbf{p}\in\mathbb{R}^3$: position in $\{W\}$.
 * $\mathbf{v}\in\mathbb{R}^3$: velocity in $\{W\}$.
@@ -89,13 +89,13 @@ $$
 
 ### Translational Dynamics
 
-$$
+```math
 m\,\ddot{\mathbf{p}}
 = m\,\mathbf{g} \;+\; \mathbf{R}(\mathbf{q})\,\begin{bmatrix}0\\0\\F_z\end{bmatrix}
 \quad\Longrightarrow\quad
 \dot{\mathbf{v}}
 = \mathbf{g} + \frac{1}{m}\,R(\mathbf{q})\,\begin{bmatrix}0\\0\\F_z\end{bmatrix},
-$$
+```
 
 where
 
@@ -106,18 +106,18 @@ where
 
 ### Rotational Dynamics
 
-$$
+```math
 \mathbf{I}\,\dot{\boldsymbol\omega}
 = \boldsymbol\tau \;-\;\boldsymbol\omega\times(\mathbf{I}\,\boldsymbol\omega),
-$$
+```
 
 with inertia $\mathbf{I}=\mathrm{diag}(I_x,I_y,I_z)$ and control torque $\boldsymbol\tau$.
 
 ### Quaternion Kinematics
 
-$$
+```math
 \dot{\mathbf{q}} \;=\; \tfrac12\,\mathbf{q}\,\otimes\,[\omega_x,\omega_y,\omega_z,0],
-$$
+```
 
 using Hamilton product $\otimes$; keeps $\mathbf{q}$ unit-norm.
 
@@ -127,14 +127,14 @@ using Hamilton product $\otimes$; keeps $\mathbf{q}$ unit-norm.
 
 1. **Outer‐loop (Position PD)**
 
-   $$
+   ```math
      \mathbf{a}_\text{cmd}
      = k_p(\mathbf{p}_\text{ref}-\mathbf{p})
        + k_d(\mathbf{v}_\text{ref}-\mathbf{v})
    \;\;\Longrightarrow\;\;
      \mathbf{F}_\text{des}
      = m\bigl(\mathbf{a}_\text{cmd}-\mathbf{g}\bigr)
-   $$
+   ```
 2. **Attitude set-point**
    Align body-z with $\mathbf{F}_\text{des}$, fix yaw to $\psi_\text{ref}$.
 3. **Inner-loop (SO(3) PD)**
