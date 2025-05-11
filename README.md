@@ -1,7 +1,3 @@
----
-layout: default
----
-
 # uav_gazebo
 
 Plugin for simple simulation of a quad-copter in Gazebo and ROS.
