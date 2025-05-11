@@ -169,6 +169,8 @@ These quantities are denoted as follows:
 - **Position Vector**:
 
   $$\mathbf{p} = \begin{bmatrix} x & y & z \end{bmatrix}^T$$
+![p](https://render.githubusercontent.com/render/math?math=\begin{bmatrix}x&y&z\end{bmatrix}^T)
+
 
 - **Velocity Vector**:
 
