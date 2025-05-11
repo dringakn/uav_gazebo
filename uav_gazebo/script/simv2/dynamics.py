@@ -59,26 +59,69 @@ class QuadDynamics:
         self.p = p
         self.I_inv = np.linalg.inv(p.I)
 
-    # ------------------------------------------------------------------
     def rhs(self, s: QuadState, u: np.ndarray) -> QuadState:
-        """Continuous-time state derivatives.
+        """Compute continuous‐time derivatives of the QuadState given control.
 
-        u = [ F_z_body, τ_x, τ_y, τ_z ]  (F along body +Z)
+        Args:
+            s: current state (pos, vel, quat, omega)
+            u: control inputs [F_z_body, τ_x, τ_y, τ_z]
+        Returns:
+            QuadState of derivatives (pos_dot, vel_dot, quat_dot, omega_dot)
         """
-        thrust, tau = u[0], u[1:]
+        # Decompose thrust magnitude and body‐frame torques
+        thrust, tau = u[0], u[1:]  
 
-        R_bw = quat_to_rot(s.quat)        # body→world
-        F_thrust_w = R_bw @ np.array([0, 0, thrust])
+        # 1) Compute body→world rotation matrix from quaternion
+        R_bw = quat_to_rot(s.quat)
 
+        # 2) Map thrust vector [0, 0, thrust]₍B₎ into world frame
+        F_thrust_w = R_bw @ np.array([0.0, 0.0, thrust])
+
+        # 3) Kinematics: position rate is current velocity
         pos_dot = s.vel
-        vel_dot = F_thrust_w / self.p.mass + self.p.g
 
+        # 4) Translational dynamics: a = g + F/m
+        vel_dot = self.p.g + (F_thrust_w / self.p.mass)
+
+        # 5) Rotational dynamics: I·ω̇ = τ − ω×(I·ω)
+        #    compute ω̇ = I⁻¹ (τ − ω×(I·ω))
         omega_dot = self.I_inv @ (tau - np.cross(s.omega, self.p.I @ s.omega))
-        quat_dot  = quat_deriv(s.quat, s.omega)
+
+        # 6) Quaternion kinematics: q̇ = ½ · q ⊗ [ω, 0]
+        quat_dot = quat_deriv(s.quat, s.omega)
 
         return QuadState(pos_dot, vel_dot, quat_dot, omega_dot)
 
-    # ------------------------------------------------------------------
-    # Convenience for vector-based integrator
     def rhs_vec(self, x: np.ndarray, u: np.ndarray) -> np.ndarray:
-        return self.rhs(QuadState.from_vec(x), u).as_vec()
+        """
+        Vectorized wrapper for use with generic ODE integrators.
+        
+        Args:
+            x (np.ndarray): Flattened state vector of length 13,
+                [pos(3), vel(3), quat(4), omega(3)].
+            u (np.ndarray): Control input vector [F_z_body, τ_x, τ_y, τ_z].
+        
+        Returns:
+            np.ndarray: Flattened derivative vector of the same shape as x.
+        """
+        # 1. Reconstruct the rich-state object from the flat vector:
+        #    - pos   = x[0:3]
+        #    - vel   = x[3:6]
+        #    - quat  = x[6:10]
+        #    - omega = x[10:13]
+        state = QuadState.from_vec(x)
+
+        # 2. Compute the continuous-time derivatives for each component:
+        #    - pos_dot   = current velocity
+        #    - vel_dot   = acceleration from thrust and gravity
+        #    - quat_dot  = quaternion rate from angular velocity
+        #    - omega_dot = angular acceleration from body torques
+        state_dot = self.rhs(state, u)
+
+        # 3. Flatten the derivative QuadState back into a single vector:
+        #    Concatenates [pos_dot, vel_dot, quat_dot, omega_dot]
+        x_dot = state_dot.as_vec()
+
+        # 4. Return the flat derivative vector for the integrator
+        return x_dot
+
