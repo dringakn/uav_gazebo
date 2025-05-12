@@ -2,6 +2,11 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="drone">
 
   <xacro:arg name="name" default="drone"/>
+  <xacro:arg name="gps_update_rate" default="5.0"/>
+  <xacro:arg name="gps_ref_lat"     default="49.0"/>
+  <xacro:arg name="gps_ref_lon"     default="9.0"/>
+  <xacro:arg name="gps_ref_alt"     default="300.0"/>
+  <xacro:arg name="gps_noise_std"   default="0.5"/>  
   <xacro:property name="prefix" value="$(arg name)"/>
   <xacro:property name="color" value="0.9 0.45 0.1 1.0"/>
 
@@ -74,10 +79,34 @@
     </visual>
   </gazebo>
 
+  <!-- Core UAV dynamics plugin -->
   <gazebo>
     <plugin name="${prefix}_plugin" filename="libuav_gazebo_plugin.so">
       <rosNamespace>${prefix}</rosNamespace>
 		</plugin>
+  </gazebo>
+
+  <!-- GPS sensor plugin -->
+  <gazebo>
+    <plugin name="${prefix}_gps_plugin" filename="libuav_gazebo_gps_plugin.so">
+      <!-- namespace for ROS topics -->
+      <rosNamespace>${prefix}</rosNamespace>
+
+      <!-- how often to publish (Hz) -->
+      <updateRate>$(arg gps_update_rate)</updateRate>
+
+      <!-- ENU origin in WGS84 -->
+      <referenceLatitude>$(arg gps_ref_lat)</referenceLatitude>
+      <referenceLongitude>$(arg gps_ref_lon)</referenceLongitude>
+      <referenceAltitude>$(arg gps_ref_alt)</referenceAltitude>
+
+      <!-- Gaussian noise σ (deg for lat/lon, m for alt) -->
+      <noiseStdDev>$(arg gps_noise_std)</noiseStdDev>
+
+      <!-- tf frame and topic name -->
+      <frameId>gps_link</frameId>
+      <topicName>/${prefix}/gps</topicName>
+    </plugin>
   </gazebo>
 
 </robot>
