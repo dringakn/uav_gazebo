@@ -17,5 +17,12 @@
   <depend>roscpp</depend>
   <depend>angles</depend>
   <depend>tf2_ros</depend>
+  <depend>ruckig</depend>
+  <depend>sensor_msgs</depend>
+  <depend>trajectory_msgs</depend>
+  <depend>kdl_parser</depend>
+
+  <!-- sudo apt install ros-<DISTRO>-kdl-parser-py -->
+  <depend>kdl_parser_py</depend>
 
 </package>

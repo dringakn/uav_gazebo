@@ -15,7 +15,9 @@ from uav_gazebo_msgs.msg import (
 )
 from uav_gazebo_msgs.srv import SwitchMode
 from gazebo_msgs.msg import ModelState
-from geometry_msgs.msg import Point, Quaternion, Twist
+from geometry_msgs.msg import Point, Quaternion
+from dynamic_reconfigure.server import Server
+from uav_gazebo.cfg import JoyControllerConfig
 
 # Define joystick button enum
 class JOYButtons:
@@ -60,19 +62,22 @@ MODE_NAME = {
     ControlMode.THRUST_TORQUE: "THRUST_TORQUE"
 }
 
-# Scaling factors for easy tuning
-POSITION_SCALE = 10.0
-YAW_SCALE = math.pi 
-VELOCITY_SCALE = 1.0
-ACCELERATION_SCALE = 1.0
-THRUST_SCALE = 10.0
-ATTITUDE_SCALE = math.pi
-
 class JoyDroneController:
     def __init__(self):
         rospy.init_node('joy_drone_controller')
 
-        # Set default mode
+        # Dynamic parameters
+        self.deadzone       = rospy.get_param("~deadzone", 0.1)
+        self.position_scale = rospy.get_param("~position_scale", 10.0)
+        self.yaw_scale      = rospy.get_param("~yaw_scale", math.pi)
+        self.velocity_scale = rospy.get_param("~velocity_scale", 1.0)
+        self.accel_scale    = rospy.get_param("~accel_scale", 1.0)
+        self.thrust_scale   = rospy.get_param("~thrust_scale", 10.0)
+        self.attitude_scale = rospy.get_param("~attitude_scale", math.pi)
+        self.controller_node = rospy.get_param("~controller_node", "pursuit_controller")
+        self.body_frame_input = rospy.get_param("~body_frame_input", True)
+        
+        # Set default mode        
         self.current_mode = ControlMode.VELOCITY_YAWRATE
         # Initialize node process (pursuit controller)
         self.pursuit_controller_process = None
@@ -91,6 +96,10 @@ class JoyDroneController:
 
         rospy.Subscriber('/joy', Joy, self.joy_callback)
         self.last_button_states = []
+
+        # start dynamic_reconfigure server
+        self.dyn_srv = Server(JoyControllerConfig, self._reconf_callback)
+                
         rospy.loginfo(f"JoyDroneController started in {MODE_NAME[self.current_mode]} mode.")
 
     def publish_model_state(self, model_name, position, orientation, twist=None, reference_frame='world'):
@@ -122,7 +131,34 @@ class JoyDroneController:
         self.pub_model_state.publish(state_msg)
         rospy.loginfo(f"Published new state for model: {model_name}")
 
+    def _reconf_callback(self, config, level):
+        # Overwrite local attributes whenever rqt changes them
+        self.deadzone       = config.deadzone
+        self.position_scale = config.position_scale
+        self.yaw_scale      = config.yaw_scale
+        self.velocity_scale = config.velocity_scale
+        self.accel_scale    = config.accel_scale
+        self.thrust_scale   = config.thrust_scale
+        self.attitude_scale = config.attitude_scale
+        self.controller_node = config.controller_node
+        self.body_frame_input = config.body_frame_input
+
+        rospy.loginfo(f"[reconfigure] controller_node={self.controller_node} deadzone={self.deadzone:.3f} pos_scale={self.position_scale:.1f} yaw_scale={self.yaw_scale:.2f} vel_scale={self.velocity_scale:.1f} acc_scale={self.accel_scale:.1f} thrust_scale={self.thrust_scale:.1f} attitude_scale={self.attitude_scale:.2f} body_frame_input={self.body_frame_input}")
+        
+        return config
+    
+    def _dz(self, v):
+        #—— apply deadzone + re‑scale ——#
+        if abs(v) < self.deadzone:
+            return 0.0
+        sign = math.copysign(1.0, v)
+        # linear remap from [deadzone,1]→[0,1]
+        return sign * (abs(v) - self.deadzone) / (1.0 - self.deadzone)
+
     def joy_callback(self, msg):
+
+        axes = [self._dz(v) for v in msg.axes]
+
         # Initialize last_button_states if empty
         if not self.last_button_states:
             self.last_button_states = list(msg.buttons)
@@ -138,7 +174,7 @@ class JoyDroneController:
         if new_mode is not None and new_mode != self.current_mode:
             self.current_mode = new_mode
             try:
-                req = ControlMode()  # Create a request message
+                req = ControlMode()
                 req.mode = new_mode
                 response = self.switch_mode_client(req)
                 if response.success:
@@ -176,7 +212,7 @@ class JoyDroneController:
                 rospy.loginfo("No running instance found. Starting a new node.")
 
             # Start (or restart) the node process
-            self.pursuit_controller_process = subprocess.Popen(["rosrun", "uav_gazebo", "pursuit_controller"])
+            self.pursuit_controller_process = subprocess.Popen(["rosrun", "uav_gazebo", self.controller_node])
             # Teleport the drone to a new position
             self.publish_model_state('drone', (0.0, 0.0, 6.0), (0.0, 0.0, 0.0, 1.0))
             
@@ -188,45 +224,45 @@ class JoyDroneController:
         if self.current_mode == ControlMode.POSITION_YAW:
             # Uses thrust and attitude controls
             cmd = PositionYawControl()
-            if len(msg.axes) >= 8:
+            if len(axes) >= 8:
                 cmd.position = Vector3(
-                    msg.axes[JOYAxes.LEFT_STICK_Y] * POSITION_SCALE,
-                    msg.axes[JOYAxes.LEFT_STICK_X] * POSITION_SCALE,
-                    msg.axes[JOYAxes.RIGHT_STICK_Y] * POSITION_SCALE
+                    axes[JOYAxes.LEFT_STICK_Y] * self.position_scale,
+                    axes[JOYAxes.LEFT_STICK_X] * self.position_scale,
+                    axes[JOYAxes.RIGHT_STICK_Y] * self.position_scale
                 )
-            cmd.yaw = msg.axes[JOYAxes.RIGHT_STICK_X] * YAW_SCALE
+            cmd.yaw = axes[JOYAxes.RIGHT_STICK_X] * self.yaw_scale
             self.pub_position_yaw.publish(cmd)
 
         elif self.current_mode == ControlMode.VELOCITY_YAWRATE:
             cmd = VelocityYawRateControl()
-            if len(msg.axes) >= 8:
+            if len(axes) >= 8:
                 cmd.velocity = Vector3(
-                    msg.axes[JOYAxes.LEFT_STICK_Y] * VELOCITY_SCALE,
-                    msg.axes[JOYAxes.LEFT_STICK_X] * VELOCITY_SCALE,
-                    msg.axes[JOYAxes.RIGHT_STICK_Y] * VELOCITY_SCALE
+                    axes[JOYAxes.LEFT_STICK_Y] * self.velocity_scale,
+                    axes[JOYAxes.LEFT_STICK_X] * self.velocity_scale,
+                    axes[JOYAxes.RIGHT_STICK_Y] * self.velocity_scale
                 )
                 cmd.acceleration = Vector3(
-                    msg.axes[JOYAxes.L2] * ACCELERATION_SCALE,
-                    msg.axes[JOYAxes.R2] * ACCELERATION_SCALE,
+                    axes[JOYAxes.L2] * self.accel_scale,
+                    axes[JOYAxes.R2] * self.accel_scale,
                     0.0
                 )
-            cmd.yaw_rate = msg.axes[JOYAxes.RIGHT_STICK_X] * YAW_SCALE
-            cmd.body_frame = True
+            cmd.yaw_rate = axes[JOYAxes.RIGHT_STICK_X] * self.yaw_scale
+            cmd.body_frame = self.body_frame_input
             self.pub_velocity_yawrate.publish(cmd)
 
         elif self.current_mode == ControlMode.THRUST_ATTITUDE:
             # Thrust and Angle: The thrust is forwarded as is. For the attitude control, a proportional and derivative pseud-control is evaluated
             cmd = ThrustAttitudeControl()
-            if len(msg.axes) >= 7:
-                cmd.thrust = msg.axes[JOYAxes.RIGHT_STICK_Y] * THRUST_SCALE
+            if len(axes) >= 8:
+                cmd.thrust = axes[JOYAxes.RIGHT_STICK_Y] * self.thrust_scale
                 cmd.attitude = Vector3(
-                    msg.axes[JOYAxes.RIGHT_STICK_X] * ATTITUDE_SCALE,
-                    msg.axes[JOYAxes.LEFT_STICK_X] * ATTITUDE_SCALE,
-                    msg.axes[JOYAxes.LEFT_STICK_Y] * ATTITUDE_SCALE
+                    axes[JOYAxes.RIGHT_STICK_X] * self.attitude_scale,
+                    axes[JOYAxes.LEFT_STICK_X] * self.attitude_scale,
+                    axes[JOYAxes.LEFT_STICK_Y] * self.attitude_scale
                 )
                 cmd.attitude_rates = Vector3(
-                    msg.axes[JOYAxes.L2] * ATTITUDE_SCALE,
-                    msg.axes[JOYAxes.R2] * ATTITUDE_SCALE,
+                    axes[JOYAxes.L2] * self.attitude_scale,
+                    axes[JOYAxes.R2] * self.attitude_scale,
                     0.0
                 )
             self.pub_thrust_attitude.publish(cmd)
@@ -234,16 +270,16 @@ class JoyDroneController:
         elif self.current_mode == ControlMode.THRUST_VELOCITY:
             # Thrust and AngVel: The thrust is forwarded as is, while the torque is computed using a proportional controller
             cmd = ThrustVelocityControl()
-            if len(msg.axes) >= 7:
-                cmd.thrust = msg.axes[JOYAxes.RIGHT_STICK_Y] * THRUST_SCALE
+            if len(axes) >= 8:
+                cmd.thrust = axes[JOYAxes.RIGHT_STICK_Y] * self.thrust_scale
                 cmd.velocity = Vector3(
-                    msg.axes[JOYAxes.RIGHT_STICK_X] * VELOCITY_SCALE,
-                    msg.axes[JOYAxes.LEFT_STICK_X] * VELOCITY_SCALE,
-                    msg.axes[JOYAxes.LEFT_STICK_Y] * VELOCITY_SCALE
+                    axes[JOYAxes.RIGHT_STICK_X] * self.velocity_scale,
+                    axes[JOYAxes.LEFT_STICK_X] * self.velocity_scale,
+                    axes[JOYAxes.LEFT_STICK_Y] * self.velocity_scale
                 )
                 cmd.acceleration = Vector3(
-                    msg.axes[JOYAxes.L2] * ACCELERATION_SCALE,
-                    msg.axes[JOYAxes.R2] * ACCELERATION_SCALE,
+                    axes[JOYAxes.L2] * self.accel_scale,
+                    axes[JOYAxes.R2] * self.accel_scale,
                     0.0
                 )
             self.pub_thrust_velocity.publish(cmd)
@@ -251,12 +287,12 @@ class JoyDroneController:
         elif self.current_mode == ControlMode.THRUST_TORQUE:
             # Direct control: thrust and torque are directly sent to move the drone
             cmd = ThrustTorqueControl()
-            if len(msg.axes) >= 4:
-                cmd.thrust = msg.axes[JOYAxes.RIGHT_STICK_Y] * THRUST_SCALE
+            if len(axes) >= 4:
+                cmd.thrust = axes[JOYAxes.RIGHT_STICK_Y] * self.thrust_scale
                 cmd.torque = Vector3(
-                    msg.axes[JOYAxes.RIGHT_STICK_X] * ATTITUDE_SCALE,
-                    msg.axes[JOYAxes.LEFT_STICK_X] * ATTITUDE_SCALE,
-                    msg.axes[JOYAxes.LEFT_STICK_Y] * ATTITUDE_SCALE
+                    axes[JOYAxes.RIGHT_STICK_X] * self.attitude_scale,
+                    axes[JOYAxes.LEFT_STICK_X] * self.attitude_scale,
+                    axes[JOYAxes.LEFT_STICK_Y] * self.attitude_scale
                 )
             self.pub_thrust_torque.publish(cmd)
         

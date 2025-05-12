@@ -3,6 +3,15 @@
 Plugin for simple simulation of a quad-copter in Gazebo and ROS.
 
 **Tested with ROS Noetic**
+### Installation
+
+```bash
+cd ~/catkin_ws/src
+git clone https://github.com/dringakn/uav_gazebo.git
+cd ~/catkin_ws
+rosdep install --from-paths src --ignore-src -r -y
+catkin build
+```
 
 ## An example for the impatients
 
@@ -158,64 +167,67 @@ be described using a 12-dimensional state composed of:
 These quantities are denoted as follows:
 
 - **Position Vector**:
-
-  $$\mathbf{p} = \begin{bmatrix} x & y & z \end{bmatrix}^T$$
-
+```math
+  \mathbf{p} = \begin{bmatrix} x & y & z \end{bmatrix}^T
+```
 - **Velocity Vector**:
 
-  $$\mathbf{v} = \begin{bmatrix} v_x & v_y & v_z \end{bmatrix}^T$$
-
+```math
+  \mathbf{v} = \begin{bmatrix} v_x & v_y & v_z \end{bmatrix}^T
+```
 - **Orientation Vector**:
 
-  $$\boldsymbol{\rho} = \begin{bmatrix} \varphi & \theta & \psi \end{bmatrix}^T$$
-
+```math
+  \boldsymbol{\rho} = \begin{bmatrix} \varphi & \theta & \psi \end{bmatrix}^T
+```
 - **Angular Velocity Vector**:
 
-  $$\dot{\boldsymbol{\rho}} = \begin{bmatrix} \dot{\varphi} & \dot{\theta} & \dot{\psi} \end{bmatrix}^T$$
-
+```math
+  \dot{\boldsymbol{\rho}} = \begin{bmatrix} \dot{\varphi} & \dot{\theta} & \dot{\psi} \end{bmatrix}^T
+```
 The orientation of the drone frame can be obtained as a sequence of three elementary **local** rotations. In particular, we consider here the orientation matrix to be expressed by:
 
-$$
+```math
 \mathbf{R} = \mathbf{R}_x (\varphi) \mathbf{R}_y (\theta) \mathbf{R}_z (\psi) = \begin{bmatrix}
 \cos(\psi) \cos(\theta) & -\sin(\psi) \cos(\theta) & \sin(\theta) \\
 \sin(\psi) \cos(\varphi) + \sin(\theta) \sin(\varphi) \cos(\psi) & -\sin(\psi) \sin(\theta) \sin(\varphi) + \cos(\psi) \cos(\varphi) & -\sin(\varphi) \cos(\theta) \\
 \sin(\psi) \sin(\varphi) - \sin(\theta) \cos(\psi) \cos(\varphi) & \sin(\psi) \sin(\theta) \cos(\varphi) + \sin(\varphi) \cos(\psi) & \cos(\theta) \cos(\varphi)
 \end{bmatrix}
-$$
+```
 
 With this parameterization, it is possible to link the angular rates to the angular velocity (in the world frame) via the relation:
 
-$$
-\boldsymbol{\omega} = \mathrm{\mathbf{D}} (\varphi,\theta) \dot{\boldsymbol{\rho}} = \begin{bmatrix}
+```math
+\boldsymbol{\omega} = \mathrm{\mathbf{D}} (\varphi,\theta) \dot{\boldsymbol{\rho}} =\begin{bmatrix}
 1 & 0 & \sin\theta \\
 0 & \cos\varphi & -\sin\varphi\cos\theta \\
 0 & \sin\varphi & \cos\varphi \cos\theta
 \end{bmatrix} \dot{\boldsymbol{\rho}}
-$$
+```
 
 Furthermore, the angular acceleration in the world frame is given by:
 
-$$
+```math
 \dot{\boldsymbol{\omega}} = \mathrm{\mathbf{D}} \ddot{\boldsymbol{\rho}} + \dot{\mathrm{\mathbf{D}}} \dot{\boldsymbol{\rho}} \qquad \dot{\mathrm{\mathbf{D}}} = \begin{bmatrix}
 0 & 0 & \dot{\theta}\cos\theta \\
 0 & -\dot{\varphi}\sin\varphi & -\dot{\varphi}\cos\varphi\cos\theta + \dot{\theta}\sin\varphi\sin\theta \\
 0 & \dot{\varphi}\cos\varphi & -\dot{\varphi}\sin\varphi\cos\theta - \dot{\theta}\cos\varphi\sin\theta
 \end{bmatrix}
-$$
+```
 
 Finally, the dynamic of the model writes as:
 
 - **Equation 1**:
 
-  $$
+```math
   \dot{\mathbf{v}} = \frac{1}{m}\mathbf{f} + \mathbf{g} = \frac{1}{m}\begin{bmatrix} \sin\theta \\ -\sin\varphi\cos\theta \\ \cos\varphi\cos\theta \end{bmatrix} f - \begin{bmatrix}0 \\ 0 \\ g\end{bmatrix}
-  $$
+```
 
 - **Equation 2**:
 
-  $$
+```math
   \boldsymbol{\tau} = \mathbf{I}\dot{\boldsymbol{\omega}} + \boldsymbol{\omega} \times \mathbf{I}\boldsymbol{\omega}
-  $$
+```
 
 where the control inputs are:
 
@@ -235,7 +247,9 @@ Not much to say here, thrust and torque are directly sent to move the drone.
 
 The thrust is forwarded _as is_, while the torque is computed using a proportional controller (optionally with a user-supplied feedforward term). To achieve the control, the angular acceleration is computed as:
 
-$$\dot{\boldsymbol{\omega}}_c = \dot{\boldsymbol{\omega}}^\star + k_\omega \left( \boldsymbol{\omega}^\star - \boldsymbol{\omega} \right)$$
+```math
+\dot{\boldsymbol{\omega}}_c = \dot{\boldsymbol{\omega}}^\star + k_\omega \left( \boldsymbol{\omega}^\star - \boldsymbol{\omega} \right)
+```
 
 And the torque is then computed via the dynamic model of the drone.
 
@@ -243,7 +257,9 @@ And the torque is then computed via the dynamic model of the drone.
 
 The thrust is forwarded _as is_. For the attitude control, a proportional and derivative pseud-control is evaluated:
 
-$$\ddot{\boldsymbol{\rho}}_c = \ddot{\boldsymbol{\rho}}^\star + k_{d,\rho} \left( \dot{\boldsymbol{\rho}}^\star - \dot{\boldsymbol{\rho}} \right) + k_{p,\rho} \left( \boldsymbol{\rho}^\star - \boldsymbol{\rho} \right)$$
+```math
+\ddot{\boldsymbol{\rho}}_c = \ddot{\boldsymbol{\rho}}^\star + k_{d,\rho} \left( \dot{\boldsymbol{\rho}}^\star - \dot{\boldsymbol{\rho}} \right) + k_{p,\rho} \left( \boldsymbol{\rho}^\star - \boldsymbol{\rho} \right)
+```
 
 The corresponding angular acceleration is then computed, and finally the torque is obtained via the dynamic model.
 
@@ -251,7 +267,9 @@ The corresponding angular acceleration is then computed, and finally the torque 
 
 The goal is now to control the position and the yaw (Z) rotation of the drone. To do this, the idea is to consider the drone as a device able to produce an orientable force. First of all, an acceleration pseudo-control is computed via a proportional and derivative controller:
 
-$$\dot{\mathrm{\mathbf{v}}}_c = \dot{\mathrm{\mathbf{v}}}^\star + k_{d} \left( \mathrm{\mathbf{v}}^\star - \mathrm{\mathbf{v}} \right) + k_{p} \left( \mathrm{\mathbf{p}}^\star - \mathrm{\mathbf{p}} \right)$$
+```math
+\dot{\mathrm{\mathbf{v}}}_c = \dot{\mathrm{\mathbf{v}}}^\star + k_{d} \left( \mathrm{\mathbf{v}}^\star - \mathrm{\mathbf{v}} \right) + k_{p} \left( \mathrm{\mathbf{p}}^\star - \mathrm{\mathbf{p}} \right)
+```
 
 which could be achieved if the force vector
 
@@ -259,19 +277,19 @@ $\mathbf{f}_c = m \dot{\mathbf{v}}_c - m \mathbf{g}$
 
 was applied to the drone. By comparison with the drone dynamic model, such force can be produced if
 
-$$
+```math
 \mathbf{f}_c = \begin{bmatrix}
 \sin\theta \\
 -\sin\varphi\cos\theta \\
 \cos\varphi\cos\theta
 \end{bmatrix} f
-$$
+```
 
 Solving for the two angles and the force, one obtains:
 
-$$
+```math
 f = \Vert \mathbf{f}_c \Vert \quad \varphi^\star = \mathrm{atan2}\left( -f_y, f_z \right) \quad \theta^\star = \mathrm{asin} \left( \frac{f_x}{f} \right)
-$$
+```
 
 which can be forwarded to the thrust and attitude control described above. Note that the yaw is regulated to the desired value by the attitude controller.
 
@@ -296,7 +314,7 @@ cd ~/catkin_ws/src
 git clone https://github.com/dringakn/uav_gazebo.git
 cd ~/catkin_ws
 rosdep install --from-paths src --ignore-src -r -y
-catkin_make
+catkin build
 ```
 
 ### 3. Parameters
@@ -367,7 +385,7 @@ cd ~/catkin_ws/src
 git clone https://github.com/dringakn/uav_gazebo.git
 cd ~/catkin_ws
 rosdep install --from-paths src --ignore-src -r -y
-catkin_make
+catkin build
 ```
 
 ### 3. Joystick Mapping

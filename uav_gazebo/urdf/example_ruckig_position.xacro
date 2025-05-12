@@ -1,0 +1,128 @@
+<?xml version="1.0"?>
+<robot name="ruckig_robot" xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <!-- Dummy root link with no inertia -->
+  <link name="world"/>
+
+  <!-- Fixed joint tying world → base_link -->
+  <joint name="world_to_base" type="fixed">
+    <parent link="world"/>
+    <child  link="base_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Parameters -->
+  <xacro:property name="link_radius"      value="0.05" />
+  <xacro:property name="link_length1"    value="0.5" />
+  <xacro:property name="link_length2"    value="0.4" />
+  <xacro:property name="link_length3"    value="0.3" />
+  <xacro:property name="mass_base"       value="2.0" />
+  <xacro:property name="mass1"           value="1.0" />
+  <xacro:property name="mass2"           value="0.8" />
+  <xacro:property name="mass3"           value="0.6" />
+
+  <!-- Base link (now a child of world) -->
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass    value="${mass_base}"/>
+      <inertia
+        ixx="0.02" iyy="0.02" izz="0.02"
+        ixy="0"    ixz="0"    iyz="0"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder radius="${link_radius}" length="0.1"/>
+      </geometry>
+      <material name="Grey">
+        <color rgba="0.6 0.6 0.6 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- Link 1 -->
+  <link name="link1">
+    <inertial>
+      <origin xyz="0 ${link_length1/2} 0" rpy="1.5708 0 0"/>
+      <mass    value="${mass1}"/>
+      <inertia
+        ixx="0.010" iyy="0.010" izz="0.005"
+        ixy="0"     ixz="0"     iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 ${link_length1/2} 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="${link_radius}" length="${link_length1}"/>
+      </geometry>
+      <material name="Blue">
+        <color rgba="0.0 0.0 0.8 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- Link 2 -->
+  <link name="link2">
+    <inertial>
+      <origin xyz="0 ${link_length2/2} 0" rpy="1.5708 0 0"/>
+      <mass    value="${mass2}"/>
+      <inertia
+        ixx="0.008" iyy="0.008" izz="0.004"
+        ixy="0"     ixz="0"     iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 ${link_length2/2} 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="${link_radius}" length="${link_length2}"/>
+      </geometry>
+      <material name="Green">
+        <color rgba="0.0 0.8 0.0 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- Link 3 -->
+  <link name="link3">
+    <inertial>
+      <origin xyz="0 ${link_length3/2} 0" rpy="1.5708 0 0"/>
+      <mass    value="${mass3}"/>
+      <inertia
+        ixx="0.006" iyy="0.006" izz="0.003"
+        ixy="0"     ixz="0"     iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 ${link_length3/2} 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="${link_radius}" length="${link_length3}"/>
+      </geometry>
+      <material name="Red">
+        <color rgba="0.8 0.0 0.0 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- Joints -->
+  <joint name="joint1" type="revolute">
+    <parent link="base_link"/>
+    <child  link="link1"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis  xyz="0 0 1"/>
+    <limit effort="10.0" velocity="3.0"/>
+  </joint>
+
+  <joint name="joint2" type="revolute">
+    <parent link="link1"/>
+    <child  link="link2"/>
+    <origin xyz="0 ${link_length1} 0" rpy="0 0 0"/>
+    <axis  xyz="0 0 1"/>
+    <limit effort="10.0" velocity="1.0"/>
+  </joint>
+
+  <joint name="joint3" type="revolute">
+    <parent link="link2"/>
+    <child  link="link3"/>
+    <origin xyz="0 ${link_length2} 0" rpy="0 0 0"/>
+    <axis  xyz="0 0 1"/>
+    <limit effort="10.0" velocity="3.0"/>
+  </joint>
+
+</robot>

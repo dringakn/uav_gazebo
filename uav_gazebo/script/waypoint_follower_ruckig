@@ -1,0 +1,309 @@
+#!/usr/bin/env python3
+"""
+Sequential Waypoint Follower using Ruckig CE for jerk‑limited trajectory generation.
+
+This node replaces an offline cubic‑spline generator + PID pure‑pursuit
+with Ruckig’s online trajectory generator. It reads a list of 3D waypoints
+from a JSON file, then in each control cycle:
+
+  1. Finds the current segment’s target waypoint.
+  2. Feeds current position, velocity, acceleration and the waypoint
+     into Ruckig to compute the next velocity setpoint (jerk‑limited).
+  3. Applies a simple P‑controller on yaw to point toward either:
+       • the direction of motion (“movement” mode),
+       • a fixed yaw angle (“fixed” mode), or
+       • a “point of interest” (“poi” mode).
+  4. Publishes a VelocityYawRateControl message with the smoothed
+     velocity and yaw‑rate commands.
+  5. When the current segment’s Ruckig trajectory finishes (or we
+     get within 0.1 m), it automatically advances to the next waypoint.
+
+Parameters (all as ROS params under the node’s namespace), with defaults:
+
+  waypoints_file_path   (string) : path to JSON with “poses” array
+                                 default: /root/catkin_ws/src/uav_gazebo/uav_gazebo/missions/path.json
+  control_loop_hz       (float)  : control frequency in Hz               default: 50
+  max_linear_velocity   (float)  : per‑axis speed limit [m/s]             default: 12
+  max_acceleration      (float)  : per‑axis accel limit [m/s²]            default: 3
+  max_jerk              (float)  : per‑axis jerk  limit [m/s³]            default: 5
+  max_angular_velocity  (float)  : yaw‑rate limit [rad/s]                  default: π/2
+  kp_yaw, kd_yaw, ki_yaw (floats) : yaw PID gains                           defaults: 1.0, 1e‑4, 0.0
+  orientation_mode      (string) : “movement” | “fixed” | “poi”            default: movement
+  fixed_yaw             (float)  : yaw angle [rad] if mode=fixed           default: 1.57
+  poi_x, poi_y, poi_z   (floats) : point‑of‑interest coordinates [m]      defaults: 50,50,30
+"""
+
+import rospy
+import json
+import math
+from ruckig import Ruckig, InputParameter, OutputParameter, Result
+from nav_msgs.msg import Odometry, Path
+from uav_gazebo_msgs.msg import VelocityYawRateControl
+from geometry_msgs.msg import Quaternion, PoseStamped
+
+class WaypointFollowerRuckig:
+    def __init__(self):
+        # --- Load parameters ---
+        self.waypoints_file_path = rospy.get_param(
+            '~waypoints_file_path',
+            '/root/catkin_ws/src/uav_gazebo/uav_gazebo/missions/path.json'
+        )
+        self.control_loop_hz = rospy.get_param('~control_loop_hz', 50.0)
+        self.dt = 1.0 / self.control_loop_hz
+
+        self.max_linear_velocity  = rospy.get_param('~max_linear_velocity', 12.0)
+        self.max_acceleration     = rospy.get_param('~max_acceleration', 3.0)
+        self.max_jerk             = rospy.get_param('~max_jerk', 5.0)
+        self.max_angular_velocity = rospy.get_param('~max_angular_velocity', math.pi/2)
+
+        self.kp_yaw = rospy.get_param('~kp_yaw', 1.0)
+        self.kd_yaw = rospy.get_param('~kd_yaw', 1e-4)
+        self.ki_yaw = rospy.get_param('~ki_yaw', 0.0)
+
+        self.orientation_mode = rospy.get_param('~orientation_mode', 'movement').lower()
+        self.fixed_yaw = rospy.get_param('~fixed_yaw', 1.57)
+        if self.orientation_mode == 'poi':
+            self.poi_position = [
+                rospy.get_param('~poi_x', 50.0),
+                rospy.get_param('~poi_y', 50.0),
+                rospy.get_param('~poi_z', 30.0),
+            ]
+        else:
+            self.poi_position = None
+
+        # --- Initialize Ruckig OTG (use positional delta_time) ---
+        self.otg = Ruckig(3, self.dt)
+        self.inp = InputParameter(3)
+        self.out = OutputParameter(3)
+
+        # Apply per‑axis limits
+        self.inp.max_velocity     = [ self.max_linear_velocity ] * 3
+        self.inp.min_velocity     = [ -self.max_linear_velocity ] * 3
+        self.inp.max_acceleration = [    self.max_acceleration ] * 3
+        self.inp.min_acceleration = [   -self.max_acceleration ] * 3
+        self.inp.max_jerk         = [          self.max_jerk ] * 3
+
+        # --- State variables ---
+        self.current_position     = None   # [x,y,z]
+        self.current_velocity     = None   # [vx,vy,vz]
+        self.prev_velocity        = None
+        self.current_acceleration = [0.0, 0.0, 0.0]
+        self.current_yaw          = 0.0
+
+        self.prev_yaw_error       = 0.0
+        self.integral_yaw_error   = 0.0
+
+        # --- ROS pubs/subs ---
+        self.odom_sub = rospy.Subscriber(
+            '/drone/odometry', Odometry,
+            self.odometry_callback,
+            queue_size=10
+        )
+        self.cmd_pub = rospy.Publisher(
+            '/drone/velocity_yawrate/command',
+            VelocityYawRateControl,
+            queue_size=1
+        )
+        self.loaded_path_pub = rospy.Publisher(
+            '/input_waypoints', Path,
+            queue_size=1, latch=True
+        )
+        self.traj_pub = rospy.Publisher(
+            '/pure_pursuit_controller/generated_trajectory',
+            Path,
+            queue_size=1,
+            latch=True # latch=True so it persists in RViz
+        )
+        self.trajectory_msg = Path()
+        self.trajectory_msg.header.frame_id = 'world'
+
+        # --- Load waypoints ---
+        self.waypoints = self.load_waypoints(self.waypoints_file_path)
+        self.publish_loaded_path()
+        
+        self.wp_index  = 0
+        self.num_wp    = len(self.waypoints)
+
+        
+        # --- Control loop timer ---
+        self.timer = rospy.Timer(
+            rospy.Duration(self.dt),
+            self.control_loop
+        )
+
+        rospy.loginfo(f"WaypointFollowerRuckig initialized: {self.num_wp} waypoints, {self.control_loop_hz} Hz")
+
+    def load_waypoints(self, path):
+        """Load JSON file with a top-level 'poses' array of {pose:{position:{x,y,z}}}."""
+        try:
+            with open(path, 'r') as f:
+                data = json.load(f)
+        except Exception as e:
+            rospy.logerr(f"Failed to open or parse waypoints file '{path}': {e}")
+            raise
+
+        poses = data.get('poses', [])
+        if not poses:
+            raise ValueError("No 'poses' array found or it's empty in {}".format(path))
+
+        waypoints = []
+        for i, p in enumerate(poses):
+            pos = p['pose']['position']
+            waypoints.append([pos['x'], pos['y'], pos['z']])
+        return waypoints
+
+    def publish_loaded_path(self):
+        path_msg = Path()
+        path_msg.header.frame_id = 'world'
+        path_msg.header.stamp = rospy.Time.now()
+
+        for wp in self.waypoints:
+            p = PoseStamped()
+            p.header = path_msg.header
+            p.pose.position.x = wp[0]
+            p.pose.position.y = wp[1]
+            p.pose.position.z = wp[2]
+            # you can leave orientation identity
+            p.pose.orientation = Quaternion(w=0, x=0, y=0, z=1)
+            path_msg.poses.append(p)
+
+        self.loaded_path_pub.publish(path_msg)
+        
+    def odometry_callback(self, msg):
+        """Update current position, velocity, acceleration, and yaw from Odometry."""
+        # Position
+        p = msg.pose.pose.position
+        self.current_position = [p.x, p.y, p.z]
+
+        # Velocity
+        v = msg.twist.twist.linear
+        self.current_velocity = [v.x, v.y, v.z]
+
+        # Approximate acceleration by finite difference
+        if self.prev_velocity is not None:
+            self.current_acceleration = [
+                (self.current_velocity[i] - self.prev_velocity[i]) / self.dt
+                for i in range(3)
+            ]
+        self.prev_velocity = list(self.current_velocity)
+
+        # Yaw from quaternion
+        q = msg.pose.pose.orientation
+        self.current_yaw = self.quaternion_to_yaw(q)
+
+    def quaternion_to_yaw(self, q: Quaternion) -> float:
+        """Convert geometry_msgs/Quaternion to yaw angle in radians."""
+        siny_cosp = 2.0 * (q.w*q.z + q.x*q.y)
+        cosy_cosp = 1.0 - 2.0 * (q.y*q.y + q.z*q.z)
+        return math.atan2(siny_cosp, cosy_cosp)
+
+    def clamp(self, val, vmin, vmax):
+        return max(vmin, min(vmax, val))
+
+    def control_loop(self, event):
+        """Main loop: one Ruckig step toward current waypoint + yaw control."""
+        if self.current_position is None:
+            # Haven't received odom yet
+            return
+
+        target = self.waypoints[self.wp_index]
+
+        # --- Fill Ruckig input ---
+        self.inp.current_position     = list(self.current_position)
+        self.inp.current_velocity     = list(self.current_velocity)
+        self.inp.current_acceleration = list(self.current_acceleration)
+
+        self.inp.target_position      = list(target)
+        # self.inp.target_velocity      = [0.0, 0.0, 0.0]
+        self.inp.target_acceleration  = [0.0, 0.0, 0.0]
+
+        if self.wp_index < self.num_wp-1:
+            # aim max speed toward next waypoint
+            dir_vec = [
+                (target[i] - self.current_position[i])
+                for i in range(3)
+            ]
+            dist = math.sqrt(sum(d*d for d in dir_vec))
+            self.inp.target_velocity = [
+                self.max_linear_velocity * (d / dist)
+                for d in dir_vec
+            ]
+        else:
+            # last waypoint: come to rest
+            self.inp.target_velocity = [0.0, 0.0, 0.0]
+
+        status = self.otg.update(self.inp, self.out)
+        if status not in (Result.Working, Result.Finished):
+            rospy.logwarn(f"Ruckig returned status {status}")
+
+        # Extract jerk‑limited velocity setpoint
+        vx, vy, vz = self.out.new_velocity
+
+        # --- Yaw control ---
+        if self.orientation_mode == 'movement':
+            desired_yaw = math.atan2(
+                target[1] - self.current_position[1],
+                target[0] - self.current_position[0]
+            )
+        elif self.orientation_mode == 'fixed':
+            desired_yaw = self.fixed_yaw
+        elif self.orientation_mode == 'poi' and self.poi_position is not None:
+            px, py, _ = self.poi_position
+            desired_yaw = math.atan2(
+                py - self.current_position[1],
+                px - self.current_position[0]
+            )
+        else:
+            desired_yaw = self.fixed_yaw
+
+        # Normalize yaw error to [-pi, pi]
+        yaw_error = (desired_yaw - self.current_yaw + math.pi) % (2*math.pi) - math.pi
+        dyaw = (yaw_error - self.prev_yaw_error) / self.dt
+        self.integral_yaw_error += yaw_error * self.dt
+        self.prev_yaw_error = yaw_error
+
+        yaw_rate = (
+            self.kp_yaw * yaw_error
+            + self.kd_yaw * dyaw
+            + self.ki_yaw * self.integral_yaw_error
+        )
+        yaw_rate = self.clamp(yaw_rate, -self.max_angular_velocity, self.max_angular_velocity)
+
+        # --- Publish command ---
+        cmd = VelocityYawRateControl()
+        cmd.velocity.x = vx
+        cmd.velocity.y = vy
+        cmd.velocity.z = vz
+        cmd.yaw_rate    = yaw_rate
+        cmd.body_frame  = False
+        self.cmd_pub.publish(cmd)
+
+        # --- Publish actual trajectory point ---
+        pose = PoseStamped()
+        pose.header.stamp = rospy.Time.now()
+        pose.header.frame_id = self.trajectory_msg.header.frame_id
+        pose.pose.position.x = self.out.new_position[0]
+        pose.pose.position.y = self.out.new_position[1]
+        pose.pose.position.z = self.out.new_position[2]
+        pose.pose.orientation = Quaternion(w=1.0, x=0.0, y=0.0, z=0.0)
+        self.trajectory_msg.poses.append(pose)
+        self.traj_pub.publish(self.trajectory_msg)
+        
+        # --- Prepare next cycle ---
+        self.out.pass_to_input(self.inp)
+
+        # --- Advance waypoint on finish or close approach ---
+        dist = math.dist(self.current_position, target)
+        if status == Result.Finished or dist < 0.1:
+            if self.wp_index < self.num_wp - 1:
+                self.wp_index += 1
+                self.trajectory_msg.poses.clear()
+                rospy.loginfo(f"Advancing to waypoint {self.wp_index}/{self.num_wp}")
+            else:
+                rospy.loginfo("All waypoints reached; shutting down")
+                rospy.signal_shutdown("Done")
+
+if __name__ == '__main__':
+    rospy.init_node('waypoint_follower_ruckig', anonymous=False)
+    WaypointFollowerRuckig()
+    rospy.spin()
