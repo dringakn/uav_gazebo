@@ -31,7 +31,9 @@ Usage:
             omega= np.zeros(3)
         )
   * Pass s0.as_vec() to an integrator.rhs_vec callback.
-  * Recover the state via QuadState.from_vec(x) each time‐step.
+        x0 = s0.as_vec()
+  * pass x0 to an integrator; after stepping, recover.
+        s1 = QuadState.from_vec(x0)
 
 This clean separation of data and dynamics enables:
   - Modular integrators (RK4, SciPy solve_ivp, custom solvers)
@@ -48,11 +50,18 @@ Part of a larger quadrotor simulation framework:
 
 from dataclasses import dataclass
 import numpy as np
-from typing import Tuple
-
+from typing import Iterator
 @dataclass
 class QuadState:
-    """Continuous state vector."""
+    """
+    Continuous‐time state vector for a quadrotor UAV.
+
+    Attributes:
+        pos   (np.ndarray[3]): World‐frame position [m].
+        vel   (np.ndarray[3]): World‐frame velocity [m/s].
+        quat  (np.ndarray[4]): Body→world orientation as unit quaternion (x, y, z, w).
+        omega (np.ndarray[3]): Body‐frame angular velocity [rad/s].
+    """
     pos:   np.ndarray        # (3,) world  [m]
     vel:   np.ndarray        # (3,) world  [m s⁻¹]
     quat:  np.ndarray        # (4,) (x,y,z,w) scalar-last
@@ -60,23 +69,61 @@ class QuadState:
 
     # --- helpers -----------------------------------------------------------
     def copy(self) -> "QuadState":
-        """Return a deep copy of the state."""
-        return QuadState(*(x.copy() for x in self))
+        """
+        Create a deep copy of this state.
 
-    def __iter__(self):
-        """Allow unpacking: pos, vel, quat, omega = state."""
+        Returns:
+            QuadState: A new instance with copies of all underlying arrays.
+        """
+        return QuadState(
+            pos   = self.pos.copy(),
+            vel   = self.vel.copy(),
+            quat  = self.quat.copy(),
+            omega = self.omega.copy()
+        )
+
+    def __iter__(self) -> Iterator[np.ndarray]:
+        """
+        Allow tuple-unpacking of the state:
+
+            pos, vel, quat, omega = state
+
+        Yields:
+            Iterator over (pos, vel, quat, omega).
+        """
         yield self.pos
         yield self.vel
         yield self.quat
         yield self.omega
 
     def as_vec(self) -> np.ndarray:
-        """Pack state into a flat vector [pos; vel; quat; omega]."""
-        return np.hstack([self.pos, self.vel, self.quat, self.omega])
+        """
+        Pack the state into a flat NumPy vector of length 13.
+
+        Order:
+            [pos[0], pos[1], pos[2],
+             vel[0], vel[1], vel[2],
+             quat[0], quat[1], quat[2], quat[3],
+             omega[0], omega[1], omega[2]]
+
+        Returns:
+            np.ndarray: Shape (13,) containing all state components.
+        """
+        return np.hstack((self.pos, self.vel, self.quat, self.omega))
 
     @staticmethod
     def from_vec(v: np.ndarray) -> "QuadState":
-        """Reconstruct a QuadState from a (13,) vector."""
+        """
+        Reconstruct a QuadState from a flat vector.
+
+        Args:
+            v (np.ndarray): Shape (13,) vector in the order defined by as_vec().
+
+        Returns:
+            QuadState: New instance with fields populated from v.
+        """
+        if v.shape != (13,):
+            raise ValueError(f"Input vector must have shape (13,), got {v.shape}")
         return QuadState(
             pos   = v[0:3],
             vel   = v[3:6],
