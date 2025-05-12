@@ -170,8 +170,14 @@ These quantities are denoted as follows:
 ```math
   \mathbf{p} = \begin{bmatrix} x & y & z \end{bmatrix}^T
 ```
+```math
+  \mathbf{p} = \begin{bmatrix} x & y & z \end{bmatrix}^T
+```
 - **Velocity Vector**:
 
+```math
+  \mathbf{v} = \begin{bmatrix} v_x & v_y & v_z \end{bmatrix}^T
+```
 ```math
   \mathbf{v} = \begin{bmatrix} v_x & v_y & v_z \end{bmatrix}^T
 ```
@@ -214,6 +220,7 @@ Furthermore, the angular acceleration in the world frame is given by:
 0 & \dot{\varphi}\cos\varphi & -\dot{\varphi}\sin\varphi\cos\theta - \dot{\theta}\cos\varphi\sin\theta
 \end{bmatrix}
 ```
+```
 
 Finally, the dynamic of the model writes as:
 
@@ -250,6 +257,9 @@ The thrust is forwarded _as is_, while the torque is computed using a proportion
 ```math
 \dot{\boldsymbol{\omega}}_c = \dot{\boldsymbol{\omega}}^\star + k_\omega \left( \boldsymbol{\omega}^\star - \boldsymbol{\omega} \right)
 ```
+```math
+\dot{\boldsymbol{\omega}}_c = \dot{\boldsymbol{\omega}}^\star + k_\omega \left( \boldsymbol{\omega}^\star - \boldsymbol{\omega} \right)
+```
 
 And the torque is then computed via the dynamic model of the drone.
 
@@ -257,6 +267,9 @@ And the torque is then computed via the dynamic model of the drone.
 
 The thrust is forwarded _as is_. For the attitude control, a proportional and derivative pseud-control is evaluated:
 
+```math
+\ddot{\boldsymbol{\rho}}_c = \ddot{\boldsymbol{\rho}}^\star + k_{d,\rho} \left( \dot{\boldsymbol{\rho}}^\star - \dot{\boldsymbol{\rho}} \right) + k_{p,\rho} \left( \boldsymbol{\rho}^\star - \boldsymbol{\rho} \right)
+```
 ```math
 \ddot{\boldsymbol{\rho}}_c = \ddot{\boldsymbol{\rho}}^\star + k_{d,\rho} \left( \dot{\boldsymbol{\rho}}^\star - \dot{\boldsymbol{\rho}} \right) + k_{p,\rho} \left( \boldsymbol{\rho}^\star - \boldsymbol{\rho} \right)
 ```
@@ -270,6 +283,9 @@ The goal is now to control the position and the yaw (Z) rotation of the drone. T
 ```math
 \dot{\mathrm{\mathbf{v}}}_c = \dot{\mathrm{\mathbf{v}}}^\star + k_{d} \left( \mathrm{\mathbf{v}}^\star - \mathrm{\mathbf{v}} \right) + k_{p} \left( \mathrm{\mathbf{p}}^\star - \mathrm{\mathbf{p}} \right)
 ```
+```math
+\dot{\mathrm{\mathbf{v}}}_c = \dot{\mathrm{\mathbf{v}}}^\star + k_{d} \left( \mathrm{\mathbf{v}}^\star - \mathrm{\mathbf{v}} \right) + k_{p} \left( \mathrm{\mathbf{p}}^\star - \mathrm{\mathbf{p}} \right)
+```
 
 which could be achieved if the force vector
 
@@ -277,6 +293,7 @@ $\mathbf{f}_c = m \dot{\mathbf{v}}_c - m \mathbf{g}$
 
 was applied to the drone. By comparison with the drone dynamic model, such force can be produced if
 
+```math
 ```math
 \mathbf{f}_c = \begin{bmatrix}
 \sin\theta \\
@@ -314,6 +331,7 @@ cd ~/catkin_ws/src
 git clone https://github.com/dringakn/uav_gazebo.git
 cd ~/catkin_ws
 rosdep install --from-paths src --ignore-src -r -y
+catkin build
 catkin build
 ```
 
@@ -385,6 +403,7 @@ cd ~/catkin_ws/src
 git clone https://github.com/dringakn/uav_gazebo.git
 cd ~/catkin_ws
 rosdep install --from-paths src --ignore-src -r -y
+catkin build
 catkin build
 ```
 
