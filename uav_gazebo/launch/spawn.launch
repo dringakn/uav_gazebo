@@ -38,9 +38,17 @@
   <!-- Name of the drone -->
   <arg name="name" default="drone"/>
 
-  <!-- Load a URDF on the ROS parameter server -->
-  <param name="robot_description" command="$(find xacro)/xacro '$(find uav_gazebo)/urdf/drone.xacro' name:=$(arg name)"/>
+  <!-- GPS parameters -->
+  <arg name="gps_update_rate" default="5.0"/>
+  <arg name="gps_ref_lat"     default="49.397742"/>
+  <arg name="gps_ref_lon"     default="9.545594"/>
+  <arg name="gps_ref_alt"     default="300.0"/>
+  <arg name="gps_noise_std"   default="1.0"/>
 
+
+  <!-- Load a URDF on the ROS parameter server -->
+  <param name="robot_description" command="$(find xacro)/xacro '$(find uav_gazebo)/urdf/drone.xacro' name:=$(arg name) gps_update_rate:=$(arg gps_update_rate) gps_ref_lat:=$(arg gps_ref_lat) gps_ref_lon:=$(arg gps_ref_lon) gps_ref_alt:=$(arg gps_ref_alt) gps_noise_std:=$(arg gps_noise_std)"/>
+  
   <!-- spawn the robot into Gazebo -->
   <arg name="pos_x" default="0"/>
   <arg name="pos_y" default="0"/>

@@ -37,10 +37,10 @@ from dataclasses import dataclass
 
 @dataclass
 class PDGains:
-    kp_pos:  float = 0.25
-    kd_pos:  float = 1.0
-    kp_att:  float = 25.0
-    kd_att:  float = 10.0
+    kp_pos:  float = 4.00
+    kd_pos:  float = 2.0
+    kp_att:  float = 50.0
+    kd_att:  float = 20.0
     kp_yaw:  float = 2.25
     kd_yaw:  float = 3.0
 
@@ -88,6 +88,10 @@ class CascadedPD:
               - self.g.kd_att*s.omega )
 
         # Desired thrust magnitude in body frame (+Z)
-        Fz_body = (R_des.T @ F_des_w)[2]
-
+        # Limit unrealistically large commands
+        tau_max = 100.0      # N·m  – tune to taste or read from motor specs
+        f_max = 100 * self.p.mass * 9.81 # N
+        Fz_body = np.clip((R_des.T @ F_des_w)[2], 0, f_max) 
+        tau = np.clip(tau, -tau_max, tau_max)
+        
         return np.hstack([Fz_body, tau])

@@ -55,3 +55,10 @@ def quat_multiply(q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
 def quat_deriv(q: np.ndarray, omega: np.ndarray) -> np.ndarray:
     """q̇ = 0.5 · q ⊗ ω̂,  ω̂ = (ω,0)."""
     return 0.5 * quat_multiply(q, np.hstack([omega, 0.0]))
+
+def safe_normalise(q: np.ndarray) -> np.ndarray:
+    """Return q/‖q‖ – but if ‖q‖≈0 fall back to identity (0,0,0,1)."""
+    n = np.linalg.norm(q)
+    if n < 1e-8 or not np.isfinite(n):
+        return np.array([0.0, 0.0, 0.0, 1.0])
+    return q / n
