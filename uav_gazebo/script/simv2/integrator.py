@@ -45,6 +45,7 @@ Dependencies:
 
 import numpy as np
 from typing import Callable
+from math_utils import safe_normalise
 
 class RK4:
     """Generic fourth‐order Runge–Kutta integrator on ℝⁿ."""
@@ -59,6 +60,10 @@ class RK4:
         """
         self.f = f
 
+    def _renorm(self, x: np.ndarray) -> None:
+        """In-place quaternion renormalisation (indices 6:10)."""
+        x[6:10] = safe_normalise(x[6:10])
+        
     def step(self, x: np.ndarray, u: np.ndarray, dt: float) -> np.ndarray:
         """
         Advance the state by one time step using RK4.
@@ -68,11 +73,34 @@ class RK4:
             u:  Current input/control vector (m,).
             dt: Time step to integrate over.
 
+        Notes:
+            If you only normalize q in dynamics.rhs, 
+            you’ll still see overflows or NaNs in the integrator’s 
+            temporary states. Keeping normalization in the integrator 
+            is the cleanest, safest way to enforce ‖q‖=1.
+
         Returns:
             x_next: State vector after time dt.
         """
-        k1 = self.f(x,           u)
-        k2 = self.f(x + 0.5 * dt * k1, u)
-        k3 = self.f(x + 0.5 * dt * k2, u)
-        k4 = self.f(x +       dt * k3, u)
-        return x + (dt / 6.0) * (k1 + 2*k2 + 2*k3 + k4)
+        # k1
+        k1 = self.f(x, u)
+
+        # k2
+        x2 = x + 0.5*dt*k1
+        self._renorm(x2)
+        k2 = self.f(x2, u)
+
+        # k3
+        x3 = x + 0.5*dt*k2
+        self._renorm(x3)
+        k3 = self.f(x3, u)
+
+        # k4
+        x4 = x + dt*k3
+        self._renorm(x4)
+        k4 = self.f(x4, u)
+
+        x_next = x + (dt/6.0)*(k1 + 2*k2 + 2*k3 + k4)
+        self._renorm(x_next)
+        
+        return x_next
