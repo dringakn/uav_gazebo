@@ -50,7 +50,6 @@ class CascadedPD:
     def __init__(self, p: QuadParams, gains: PDGains):
         self.p, self.g = p, gains
 
-    # ------------------------------------------------------------------
     def __call__(
         self,
         t: float,
@@ -64,8 +63,8 @@ class CascadedPD:
         # ----- position loop ------------------------------------------
         pos_err = pos_ref - s.pos
         vel_err = vel_ref - s.vel
-        a_cmd   = self.g.kp_pos*pos_err + self.g.kd_pos*vel_err
-        F_des_w = self.p.mass*(a_cmd - self.p.g)
+        a_cmd   = self.g.kp_pos * pos_err + self.g.kd_pos * vel_err
+        F_des_w = self.p.mass * (a_cmd - self.p.g)
 
         # Desired body-Z axis
         b3_des = F_des_w/np.linalg.norm(F_des_w)
@@ -84,8 +83,8 @@ class CascadedPD:
         err_R     = np.array([err_Rmat[2,1], err_Rmat[0,2], err_Rmat[1,0]])
 
         # Yaw rate error (des = 0)
-        tau = ( self.g.kp_att*err_R
-              - self.g.kd_att*s.omega )
+        tau = ( self.g.kp_att * err_R
+              - self.g.kd_att * s.omega )
 
         # Desired thrust magnitude in body frame (+Z)
         # Limit unrealistically large commands

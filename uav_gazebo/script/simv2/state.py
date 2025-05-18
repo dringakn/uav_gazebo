@@ -67,7 +67,6 @@ class QuadState:
     quat:  np.ndarray        # (4,) (x,y,z,w) scalar-last
     omega: np.ndarray        # (3,) body   [rad s⁻¹]
 
-    # --- helpers -----------------------------------------------------------
     def copy(self) -> "QuadState":
         """
         Create a deep copy of this state.
